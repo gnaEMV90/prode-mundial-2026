@@ -66,6 +66,11 @@ export type Prediction = {
   home_score: number;
   away_score: number;
   points: number;
+  exact_score_points: number;
+  correct_winner_points: number;
+  correct_draw_points: number;
+  goal_difference_points: number;
+  points_reason: string;
   locked_at: string | null;
   starts_at: string;
   status: Match['status'];

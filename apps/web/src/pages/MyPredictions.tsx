@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, Match, Prediction } from '../lib/api';
 import { Message } from '../components/Message';
@@ -30,6 +31,15 @@ export function MyPredictions() {
     () => new Map(predictions.map((prediction) => [prediction.match_id, prediction])),
     [predictions]
   );
+
+  const totals = useMemo(() => {
+    const loaded = predictions.length;
+    const finished = predictions.filter((prediction) => prediction.status === 'FINISHED').length;
+    const points = predictions.reduce((sum, prediction) => sum + prediction.points, 0);
+    const exactHits = predictions.filter((prediction) => prediction.exact_score_points > 0).length;
+
+    return { loaded, finished, points, exactHits };
+  }, [predictions]);
 
   useEffect(() => {
     const next: PredictionForm = {};
@@ -86,7 +96,16 @@ export function MyPredictions() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-black">Mis pronósticos</h1>
-        <p className="mt-2 text-slate-300">Cargá resultados antes de que arranque cada partido.</p>
+        <p className="mt-2 text-slate-300">
+          Cargá resultados antes de que arranque cada partido. Cuando el partido termina, vas a ver exactamente por qué sumaste puntos.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-4">
+        <SummaryCard label="Pronósticos cargados" value={totals.loaded} />
+        <SummaryCard label="Partidos con puntos" value={totals.finished} />
+        <SummaryCard label="Puntos por partidos" value={totals.points} accent />
+        <SummaryCard label="Exactos" value={totals.exactHits} />
       </div>
 
       {message && <Message type="success">{message}</Message>}
@@ -123,11 +142,7 @@ export function MyPredictions() {
                 </div>
 
                 <div className="flex flex-col gap-2 sm:items-end">
-                  {prediction && (
-                    <span className="text-sm text-slate-300">
-                      Puntos: <strong className="text-white">{prediction.points}</strong>
-                    </span>
-                  )}
+                  <PredictionPointsPill prediction={prediction} match={match} />
 
                   <button
                     disabled={locked}
@@ -137,10 +152,21 @@ export function MyPredictions() {
                   </button>
                 </div>
               </form>
+
+              <PredictionDetail prediction={prediction} match={match} />
             </article>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/10 p-4">
+      <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
+      <div className={`mt-2 text-2xl font-black ${accent ? 'text-emerald-300' : 'text-white'}`}>{value}</div>
     </div>
   );
 }
@@ -180,6 +206,97 @@ function PredictionMatchHeader({ match }: { match: Match }) {
         )}
       </div>
     </div>
+  );
+}
+
+function PredictionPointsPill({ prediction, match }: { prediction: Prediction | undefined; match: Match }) {
+  if (!prediction) {
+    return <span className="text-sm text-slate-400">Sin pronóstico</span>;
+  }
+
+  if (match.status !== 'FINISHED') {
+    return (
+      <span className="rounded-full bg-slate-900 px-3 py-1 text-sm font-bold text-slate-300">
+        Pendiente de resultado
+      </span>
+    );
+  }
+
+  return (
+    <span className={`rounded-full px-3 py-1 text-sm font-black ${prediction.points > 0 ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-300'}`}>
+      +{prediction.points} pts
+    </span>
+  );
+}
+
+function PredictionDetail({ prediction, match }: { prediction: Prediction | undefined; match: Match }) {
+  const realHome = prediction?.real_home_score ?? match.home_score;
+  const realAway = prediction?.real_away_score ?? match.away_score;
+
+  if (!prediction) {
+    return (
+      <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-4 text-sm text-slate-400">
+        Todavía no cargaste pronóstico para este partido.
+      </div>
+    );
+  }
+
+  if (match.status !== 'FINISHED' || realHome === null || realAway === null) {
+    return (
+      <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+        <div className="grid gap-3 text-sm sm:grid-cols-2">
+          <ScoreLine label="Tu pronóstico" home={prediction.home_score} away={prediction.away_score} />
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">Resultado real</div>
+            <div className="mt-1 font-bold text-slate-300">Pendiente</div>
+          </div>
+        </div>
+        <div className="mt-3 text-sm text-slate-400">Cuando el admin cargue el resultado final, acá vas a ver tus puntos y el motivo.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+      <div className="grid gap-3 text-sm sm:grid-cols-3">
+        <ScoreLine label="Tu pronóstico" home={prediction.home_score} away={prediction.away_score} />
+        <ScoreLine label="Resultado real" home={realHome} away={realAway} />
+        <div>
+          <div className="text-xs uppercase tracking-wide text-slate-500">Puntos obtenidos</div>
+          <div className={`mt-1 text-xl font-black ${prediction.points > 0 ? 'text-emerald-300' : 'text-slate-400'}`}>
+            +{prediction.points} pts
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <ReasonBadge primary>{prediction.points_reason || 'Detalle no disponible'}</ReasonBadge>
+        {prediction.exact_score_points > 0 && <ReasonBadge>Exacto: +{prediction.exact_score_points}</ReasonBadge>}
+        {prediction.correct_winner_points > 0 && <ReasonBadge>Ganador: +{prediction.correct_winner_points}</ReasonBadge>}
+        {prediction.correct_draw_points > 0 && <ReasonBadge>Empate: +{prediction.correct_draw_points}</ReasonBadge>}
+        {prediction.goal_difference_points > 0 && <ReasonBadge>Diferencia: +{prediction.goal_difference_points}</ReasonBadge>}
+        {prediction.points === 0 && <ReasonBadge>Esta vez no sumó. Duele, pero el fixture sigue.</ReasonBadge>}
+      </div>
+    </div>
+  );
+}
+
+function ScoreLine({ label, home, away }: { label: string; home: number; away: number }) {
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-xl font-black text-white">
+        {home} - {away}
+      </div>
+    </div>
+  );
+}
+
+function ReasonBadge({ children, primary = false }: { children: ReactNode; primary?: boolean }) {
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-bold ${primary ? 'bg-emerald-400 text-slate-950' : 'bg-white/10 text-slate-200'}`}>
+      {children}
+    </span>
   );
 }
 

@@ -55,6 +55,15 @@ type TournamentResultsInput = {
   fourth_place_team_id: number | null;
 };
 
+type MatchPointsDetail = {
+  points: number;
+  exact_score_points: number;
+  correct_winner_points: number;
+  correct_draw_points: number;
+  goal_difference_points: number;
+  points_reason: string;
+};
+
 const app = new Hono<{ Bindings: Env; Variables: { user: User | null } }>();
 
 const COOKIE_NAME = 'pm_session';
@@ -290,7 +299,11 @@ app.get('/predictions/me', requireAuth, async (c) => {
       m.home_score AS real_home_score,
       m.away_score AS real_away_score,
       ht.name AS home_team_name,
-      at.name AS away_team_name
+      ht.code AS home_team_code,
+      ht.flag_code AS home_flag_code,
+      at.name AS away_team_name,
+      at.code AS away_team_code,
+      at.flag_code AS away_flag_code
     FROM predictions p
     INNER JOIN matches m ON m.id = p.match_id
     LEFT JOIN teams ht ON ht.id = m.home_team_id
@@ -318,11 +331,30 @@ app.put('/predictions/:matchId', requireAuth, async (c) => {
   if (isMatchLocked(match)) return badRequest(c, 'Este partido ya empezó o está finalizado. No se puede modificar el pronóstico.');
 
   await c.env.DB.prepare(`
-    INSERT INTO predictions (user_id, match_id, home_score, away_score, points, locked_at, updated_at)
-    VALUES (?, ?, ?, ?, 0, NULL, CURRENT_TIMESTAMP)
+    INSERT INTO predictions (
+      user_id,
+      match_id,
+      home_score,
+      away_score,
+      points,
+      exact_score_points,
+      correct_winner_points,
+      correct_draw_points,
+      goal_difference_points,
+      points_reason,
+      locked_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 'Pendiente', NULL, CURRENT_TIMESTAMP)
     ON CONFLICT(user_id, match_id) DO UPDATE SET
       home_score = excluded.home_score,
       away_score = excluded.away_score,
+      points = 0,
+      exact_score_points = 0,
+      correct_winner_points = 0,
+      correct_draw_points = 0,
+      goal_difference_points = 0,
+      points_reason = 'Pendiente',
       updated_at = CURRENT_TIMESTAMP
   `).bind(user.id, matchId, input.data.home_score, input.data.away_score).run();
 
@@ -812,7 +844,23 @@ async function recalculateSpecialPredictions(db: D1Database) {
 
 async function recalculateMatch(db: D1Database, matchId: number) {
   const match = await db.prepare('SELECT * FROM matches WHERE id = ?').bind(matchId).first<Match>();
-  if (!match || match.status !== 'FINISHED' || match.home_score === null || match.away_score === null) return;
+  if (!match) return;
+
+  if (match.status !== 'FINISHED' || match.home_score === null || match.away_score === null) {
+    await db.prepare(`
+      UPDATE predictions
+      SET
+        points = 0,
+        exact_score_points = 0,
+        correct_winner_points = 0,
+        correct_draw_points = 0,
+        goal_difference_points = 0,
+        points_reason = 'Pendiente',
+        updated_at = CURRENT_TIMESTAMP
+      WHERE match_id = ?
+    `).bind(matchId).run();
+    return;
+  }
 
   const rules = await getScoringRules(db);
   const predictions = await db.prepare('SELECT id, home_score, away_score FROM predictions WHERE match_id = ?').bind(matchId).all<{
@@ -822,10 +870,29 @@ async function recalculateMatch(db: D1Database, matchId: number) {
   }>();
 
   for (const prediction of predictions.results) {
-    const points = calculatePoints(prediction.home_score, prediction.away_score, match.home_score, match.away_score, rules);
-    await db.prepare('UPDATE predictions SET points = ?, locked_at = COALESCE(locked_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .bind(points, prediction.id)
-      .run();
+    const detail = calculatePointsDetail(prediction.home_score, prediction.away_score, match.home_score, match.away_score, rules);
+
+    await db.prepare(`
+      UPDATE predictions
+      SET
+        points = ?,
+        exact_score_points = ?,
+        correct_winner_points = ?,
+        correct_draw_points = ?,
+        goal_difference_points = ?,
+        points_reason = ?,
+        locked_at = COALESCE(locked_at, CURRENT_TIMESTAMP),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      detail.points,
+      detail.exact_score_points,
+      detail.correct_winner_points,
+      detail.correct_draw_points,
+      detail.goal_difference_points,
+      detail.points_reason,
+      prediction.id
+    ).run();
   }
 }
 
@@ -838,18 +905,61 @@ function calculateSpecialPoints(prediction: SpecialPredictionInput, results: Tou
   return points;
 }
 
-function calculatePoints(predHome: number, predAway: number, realHome: number, realAway: number, rules: ScoringRules) {
-  if (predHome === realHome && predAway === realAway) return rules.exact_score_points;
+function calculatePointsDetail(
+  predHome: number,
+  predAway: number,
+  realHome: number,
+  realAway: number,
+  rules: ScoringRules
+): MatchPointsDetail {
+  if (predHome === realHome && predAway === realAway) {
+    return {
+      points: rules.exact_score_points,
+      exact_score_points: rules.exact_score_points,
+      correct_winner_points: 0,
+      correct_draw_points: 0,
+      goal_difference_points: 0,
+      points_reason: 'Resultado exacto'
+    };
+  }
 
   const predictedOutcome = getOutcome(predHome, predAway);
   const realOutcome = getOutcome(realHome, realAway);
-  if (predictedOutcome !== realOutcome) return 0;
 
-  if (realOutcome === 'DRAW') return rules.correct_draw_points;
+  if (predictedOutcome !== realOutcome) {
+    return {
+      points: 0,
+      exact_score_points: 0,
+      correct_winner_points: 0,
+      correct_draw_points: 0,
+      goal_difference_points: 0,
+      points_reason: 'Sin puntos'
+    };
+  }
 
-  let points = rules.correct_winner_points;
-  if (predHome - predAway === realHome - realAway) points += rules.goal_difference_points;
-  return points;
+  if (realOutcome === 'DRAW') {
+    return {
+      points: rules.correct_draw_points,
+      exact_score_points: 0,
+      correct_winner_points: 0,
+      correct_draw_points: rules.correct_draw_points,
+      goal_difference_points: 0,
+      points_reason: 'Empate correcto'
+    };
+  }
+
+  const goalDifferenceHit = predHome - predAway === realHome - realAway;
+  const goalDifferencePoints = goalDifferenceHit ? rules.goal_difference_points : 0;
+  const points = rules.correct_winner_points + goalDifferencePoints;
+
+  return {
+    points,
+    exact_score_points: 0,
+    correct_winner_points: rules.correct_winner_points,
+    correct_draw_points: 0,
+    goal_difference_points: goalDifferencePoints,
+    points_reason: goalDifferenceHit ? 'Ganador correcto + diferencia de goles' : 'Ganador correcto'
+  };
 }
 
 function getOutcome(home: number, away: number) {
