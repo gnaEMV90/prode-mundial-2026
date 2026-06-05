@@ -18,7 +18,8 @@
     "db:migrate:remote": "npm run db:migrate:remote -w apps/api",
     "db:seed:remote": "npm run db:seed:remote -w apps/api",
     "deploy:api": "npm run deploy -w apps/api",
-    "deploy:web": "npm run deploy -w apps/web"
+    "deploy:web": "npm run deploy -w apps/web",
+    "backup:db": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-db.ps1"
   },
   "engines": {
     "node": ">=20.0.0"
