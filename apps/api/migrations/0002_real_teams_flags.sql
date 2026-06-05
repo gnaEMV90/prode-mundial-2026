@@ -1,6 +1,5 @@
 PRAGMA foreign_keys = ON;
 
-BEGIN TRANSACTION;
 UPDATE teams SET name = 'México', code = 'MEX', flag_code = 'mx', group_name = 'A', updated_at = CURRENT_TIMESTAMP WHERE id = 1;
 UPDATE teams SET name = 'Sudáfrica', code = 'RSA', flag_code = 'za', group_name = 'A', updated_at = CURRENT_TIMESTAMP WHERE id = 2;
 UPDATE teams SET name = 'Corea del Sur', code = 'KOR', flag_code = 'kr', group_name = 'A', updated_at = CURRENT_TIMESTAMP WHERE id = 3;
@@ -50,4 +49,3 @@ UPDATE teams SET name = 'Croacia', code = 'CRO', flag_code = 'hr', group_name = 
 UPDATE teams SET name = 'Ghana', code = 'GHA', flag_code = 'gh', group_name = 'L', updated_at = CURRENT_TIMESTAMP WHERE id = 47;
 UPDATE teams SET name = 'Panamá', code = 'PAN', flag_code = 'pa', group_name = 'L', updated_at = CURRENT_TIMESTAMP WHERE id = 48;
 
-COMMIT;

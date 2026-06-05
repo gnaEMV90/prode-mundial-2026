@@ -9,5 +9,5 @@ CORS_ORIGIN = "http://localhost:5173"
 [[d1_databases]]
 binding = "DB"
 database_name = "prode_mundial_2026"
-database_id = "REEMPLAZAR_EN_CLOUDFLARE"
+database_id = "cffcf0cc-dd5e-4c00-891d-658d0884b27b"
 migrations_dir = "migrations"
