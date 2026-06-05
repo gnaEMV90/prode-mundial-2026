@@ -8,3 +8,8 @@ dist
 !.env.example
 .DS_Store
 npm-debug.log*
+
+# Backups de base de datos
+backups/
+*.sqlite
+*.db
