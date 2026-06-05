@@ -90,6 +90,10 @@ const changePasswordSchema = z.object({
   new_password: z.string().min(8).max(120)
 });
 
+const adminResetPasswordSchema = z.object({
+  new_password: z.string().min(8).max(120)
+});
+
 const predictionSchema = z.object({
   home_score: z.number().int().min(0).max(99),
   away_score: z.number().int().min(0).max(99)
@@ -461,6 +465,51 @@ app.get('/admin/users', requireAdmin, async (c) => {
     ORDER BY created_at DESC
   `).all();
   return c.json({ users: users.results });
+});
+
+app.post('/admin/users/:id/reset-password', requireAdmin, async (c) => {
+  const currentUser = c.get('user') as User;
+  const targetUserId = Number(c.req.param('id'));
+
+  if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+    return badRequest(c, 'Usuario inválido.');
+  }
+
+  if (targetUserId === currentUser.id) {
+    return badRequest(c, 'Para cambiar tu propia contraseña usá la pantalla Mi cuenta.');
+  }
+
+  const body = await parseBody(c);
+  const input = adminResetPasswordSchema.safeParse(body);
+  if (!input.success) {
+    return badRequest(c, 'La nueva contraseña debe tener al menos 8 caracteres.');
+  }
+
+  const targetUser = await c.env.DB.prepare(`
+    SELECT id, name, email, role
+    FROM users
+    WHERE id = ?
+  `).bind(targetUserId).first<User>();
+
+  if (!targetUser) {
+    return notFound(c, 'No se encontró el usuario.');
+  }
+
+  if (targetUser.role === 'ADMIN') {
+    return forbidden(c, 'No se puede resetear la contraseña de otro administrador desde este panel.');
+  }
+
+  const passwordHash = await hashPassword(input.data.new_password);
+
+  await c.env.DB.prepare(`
+    UPDATE users
+    SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND role = 'USER'
+  `).bind(passwordHash, targetUserId).run();
+
+  await c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(targetUserId).run();
+
+  return c.json({ ok: true });
 });
 
 app.put('/admin/matches/:id', requireAdmin, async (c) => {

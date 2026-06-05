@@ -122,7 +122,7 @@ export function Admin() {
       <FixtureAdmin matches={matches} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />
       {tournamentResults && <TournamentResultsAdmin results={tournamentResults} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />}
       {rules && <RulesForm rules={rules} onSaved={load} onMessage={setMessage} onError={setError} />}
-      <UsersAdmin users={users} />
+      <UsersAdmin users={users} onSaved={load} onMessage={setMessage} onError={setError} />
     </div>
   );
 }
@@ -820,10 +820,67 @@ function RulesForm({
   );
 }
 
-function UsersAdmin({ users }: { users: User[] }) {
+function UsersAdmin({
+  users,
+  onSaved,
+  onMessage,
+  onError
+}: {
+  users: User[];
+  onSaved: () => Promise<void>;
+  onMessage: (value: string) => void;
+  onError: (value: string) => void;
+}) {
+  const [passwords, setPasswords] = useState<Record<number, string>>({});
+  const [resettingUserId, setResettingUserId] = useState<number | null>(null);
+
+  function updatePassword(userId: number, value: string) {
+    setPasswords((current) => ({ ...current, [userId]: value }));
+  }
+
+  async function resetPassword(user: User) {
+    onMessage('');
+    onError('');
+
+    const newPassword = (passwords[user.id] || '').trim();
+
+    if (newPassword.length < 8) {
+      onError('La contraseña temporal debe tener al menos 8 caracteres.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Vas a resetear la contraseña de ${user.name}. El usuario deberá entrar con esta clave temporal y luego podrá cambiarla desde Mi cuenta. ¿Continuar?`
+    );
+
+    if (!confirmed) return;
+
+    setResettingUserId(user.id);
+    try {
+      await api(`/admin/users/${user.id}/reset-password`, {
+        method: 'POST',
+        body: { new_password: newPassword }
+      });
+
+      setPasswords((current) => ({ ...current, [user.id]: '' }));
+      await onSaved();
+      onMessage(`Contraseña reseteada para ${user.name}. Sus sesiones activas fueron cerradas.`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'No se pudo resetear la contraseña.');
+    } finally {
+      setResettingUserId(null);
+    }
+  }
+
   return (
     <section className="space-y-4">
-      <h2 className="text-2xl font-black text-emerald-300">Usuarios</h2>
+      <div>
+        <h2 className="text-2xl font-black text-emerald-300">Usuarios</h2>
+        <p className="mt-1 text-sm text-slate-300">
+          Desde acá podés resetear la contraseña de usuarios comunes. Las sesiones activas del usuario se cierran automáticamente.
+        </p>
+      </div>
+
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/10">
         <table className="min-w-full text-sm">
           <thead className="bg-white/10 text-left text-slate-300">
@@ -831,14 +888,40 @@ function UsersAdmin({ users }: { users: User[] }) {
               <th className="px-4 py-3">Nombre</th>
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Rol</th>
+              <th className="px-4 py-3">Reset de clave</th>
             </tr>
           </thead>
           <tbody>
             {users.map((user) => (
-              <tr key={user.id} className="border-t border-white/10">
+              <tr key={user.id} className="border-t border-white/10 align-top">
                 <td className="px-4 py-3 font-bold">{user.name}</td>
                 <td className="px-4 py-3 text-slate-300">{user.email}</td>
                 <td className="px-4 py-3">{user.role}</td>
+                <td className="px-4 py-3">
+                  {user.role === 'ADMIN' ? (
+                    <span className="text-xs text-slate-400">No disponible para administradores.</span>
+                  ) : (
+                    <div className="flex min-w-[260px] flex-col gap-2 sm:flex-row">
+                      <input
+                        type="password"
+                        minLength={8}
+                        value={passwords[user.id] || ''}
+                        onChange={(event) => updatePassword(user.id, event.target.value)}
+                        placeholder="Clave temporal"
+                        autoComplete="new-password"
+                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white outline-none focus:border-emerald-300"
+                      />
+                      <button
+                        type="button"
+                        disabled={resettingUserId === user.id}
+                        onClick={() => resetPassword(user)}
+                        className="rounded-xl bg-amber-400 px-4 py-2 font-black text-slate-950 hover:bg-amber-300 disabled:cursor-wait disabled:bg-slate-600 disabled:text-slate-300"
+                      >
+                        {resettingUserId === user.id ? 'Reseteando...' : 'Resetear'}
+                      </button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
