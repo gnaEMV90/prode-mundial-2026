@@ -109,6 +109,8 @@ export function Account() {
             <label className="block">
               <span className="text-sm font-bold text-slate-200">Nombre visible</span>
               <input
+                name="name"
+                autoComplete="name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-300"
@@ -120,6 +122,8 @@ export function Account() {
               <span className="text-sm font-bold text-slate-200">Email</span>
               <input
                 type="email"
+                name="email"
+                autoComplete="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-300"
@@ -138,13 +142,27 @@ export function Account() {
 
         <section className="rounded-3xl border border-white/10 bg-white/10 p-5">
           <h2 className="text-xl font-black">Cambiar contraseña</h2>
-          <p className="mt-1 text-sm text-slate-300">Usá al menos 8 caracteres. Nada de “12345678”, tampoco hagamos beneficencia a los hackers.</p>
+          <p className="mt-1 text-sm text-slate-300">
+            Usá al menos 8 caracteres. Nada de “12345678”, tampoco hagamos beneficencia a los hackers.
+          </p>
 
           <form onSubmit={changePassword} className="mt-5 space-y-4">
+            <input
+              type="email"
+              name="username"
+              autoComplete="username"
+              value={email}
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+              className="hidden"
+            />
+
             <label className="block">
               <span className="text-sm font-bold text-slate-200">Contraseña actual</span>
               <input
                 type="password"
+                name="current-password"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-300"
@@ -156,6 +174,7 @@ export function Account() {
               <span className="text-sm font-bold text-slate-200">Nueva contraseña</span>
               <input
                 type="password"
+                name="new-password"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-300"
@@ -167,6 +186,7 @@ export function Account() {
               <span className="text-sm font-bold text-slate-200">Repetir nueva contraseña</span>
               <input
                 type="password"
+                name="repeat-password"
                 value={repeatPassword}
                 onChange={(event) => setRepeatPassword(event.target.value)}
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-emerald-300"
