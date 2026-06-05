@@ -68,6 +68,9 @@ const app = new Hono<{ Bindings: Env; Variables: { user: User | null } }>();
 
 const COOKIE_NAME = 'pm_session';
 const SESSION_DAYS = 30;
+const LOGIN_WINDOW_MINUTES = 15;
+const LOGIN_MAX_FAILED_ATTEMPTS = 5;
+const LOGIN_LOCK_MESSAGE = 'Demasiados intentos fallidos. Esperá 15 minutos y probá de nuevo.';
 
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -161,6 +164,14 @@ app.use('*', async (c, next) => {
 });
 
 app.use('*', async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  c.header('X-Frame-Options', 'DENY');
+});
+
+app.use('*', async (c, next) => {
   const user = await getCurrentUser(c.env.DB, getCookie(c, COOKIE_NAME));
   c.set('user', user);
   await next();
@@ -193,14 +204,30 @@ app.post('/auth/login', async (c) => {
   if (!input.success) return badRequest(c, 'Email o contraseña inválidos.');
 
   const email = input.data.email.toLowerCase();
+  const ip = getClientIp(c);
+
+  if (await isLoginTemporarilyLocked(c.env.DB, email, ip)) {
+    await logLoginAttempt(c.env.DB, email, ip, false);
+    return tooManyRequests(c, LOGIN_LOCK_MESSAGE);
+  }
+
   const row = await c.env.DB.prepare(
     'SELECT id, name, email, role, password_hash FROM users WHERE email = ?'
   ).bind(email).first<User & { password_hash: string }>();
 
-  if (!row) return unauthorized(c, 'Email o contraseña inválidos.');
-  const valid = await verifyPassword(input.data.password, row.password_hash);
-  if (!valid) return unauthorized(c, 'Email o contraseña inválidos.');
+  if (!row) {
+    await logLoginAttempt(c.env.DB, email, ip, false);
+    return unauthorized(c, 'Email o contraseña inválidos.');
+  }
 
+  const valid = await verifyPassword(input.data.password, row.password_hash);
+  if (!valid) {
+    await logLoginAttempt(c.env.DB, email, ip, false);
+    return unauthorized(c, 'Email o contraseña inválidos.');
+  }
+
+  await clearFailedLoginAttempts(c.env.DB, email, ip);
+  await logLoginAttempt(c.env.DB, email, ip, true);
   await createSession(c, row.id);
   return c.json({ user: cleanUser(row) });
 });
@@ -467,6 +494,26 @@ app.get('/admin/users', requireAdmin, async (c) => {
   return c.json({ users: users.results });
 });
 
+app.get('/admin/audit-logs', requireAdmin, async (c) => {
+  const logs = await c.env.DB.prepare(`
+    SELECT
+      l.id,
+      l.action,
+      l.entity_type,
+      l.entity_id,
+      l.detail,
+      l.ip,
+      l.created_at,
+      u.name AS admin_name,
+      u.email AS admin_email
+    FROM admin_audit_logs l
+    LEFT JOIN users u ON u.id = l.admin_user_id
+    ORDER BY l.created_at DESC
+    LIMIT 80
+  `).all();
+  return c.json({ logs: logs.results });
+});
+
 app.post('/admin/users/:id/reset-password', requireAdmin, async (c) => {
   const currentUser = c.get('user') as User;
   const targetUserId = Number(c.req.param('id'));
@@ -509,6 +556,10 @@ app.post('/admin/users/:id/reset-password', requireAdmin, async (c) => {
 
   await c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(targetUserId).run();
 
+  await logAdminAction(c, 'RESET_USER_PASSWORD', 'users', String(targetUserId), {
+    target_user_email: targetUser.email
+  });
+
   return c.json({ ok: true });
 });
 
@@ -541,6 +592,13 @@ app.put('/admin/matches/:id', requireAdmin, async (c) => {
     matchId
   ).run();
 
+  await logAdminAction(c, 'UPDATE_FIXTURE', 'matches', String(matchId), {
+    match_order: current?.match_order,
+    stage: next.stage,
+    starts_at: next.starts_at,
+    status: next.status
+  });
+
   return c.json({ ok: true });
 });
 
@@ -562,6 +620,11 @@ app.post('/admin/matches/:id/result', requireAdmin, async (c) => {
   `).bind(input.data.home_score, input.data.away_score, input.data.status, matchId).run();
 
   await recalculateMatch(c.env.DB, matchId);
+  await logAdminAction(c, 'SAVE_MATCH_RESULT', 'matches', String(matchId), {
+    home_score: input.data.home_score,
+    away_score: input.data.away_score,
+    status: input.data.status
+  });
   return c.json({ ok: true });
 });
 
@@ -598,6 +661,7 @@ app.put('/admin/tournament-results', requireAdmin, async (c) => {
   ).run();
 
   await recalculateSpecialPredictions(c.env.DB);
+  await logAdminAction(c, 'UPDATE_TOURNAMENT_RESULTS', 'tournament_results', '1', input.data);
   return c.json({ ok: true });
 });
 
@@ -607,6 +671,7 @@ app.post('/admin/settings/special-lock', requireAdmin, async (c) => {
   const input = schema.safeParse(body);
   if (!input.success) return badRequest(c, 'Valor inválido.');
   await setSetting(c.env.DB, 'SPECIAL_PREDICTIONS_LOCKED', String(input.data.locked));
+  await logAdminAction(c, input.data.locked ? 'LOCK_SPECIAL_PREDICTIONS' : 'UNLOCK_SPECIAL_PREDICTIONS', 'app_settings', 'SPECIAL_PREDICTIONS_LOCKED', { locked: input.data.locked });
   return c.json({ ok: true });
 });
 
@@ -644,11 +709,13 @@ app.put('/admin/scoring-rules', requireAdmin, async (c) => {
   ).run();
 
   await recalculateAll(c.env.DB);
+  await logAdminAction(c, 'UPDATE_SCORING_RULES', 'scoring_rules', '1', input.data);
   return c.json({ ok: true });
 });
 
 app.post('/admin/recalculate', requireAdmin, async (c) => {
   await recalculateAll(c.env.DB);
+  await logAdminAction(c, 'RECALCULATE_POINTS', 'system', 'ranking', null);
   return c.json({ ok: true });
 });
 
@@ -658,6 +725,7 @@ app.post('/admin/settings/predictions-lock', requireAdmin, async (c) => {
   const input = schema.safeParse(body);
   if (!input.success) return badRequest(c, 'Valor inválido.');
   await setSetting(c.env.DB, 'PREDICTIONS_LOCKED', String(input.data.locked));
+  await logAdminAction(c, input.data.locked ? 'LOCK_PREDICTIONS' : 'UNLOCK_PREDICTIONS', 'app_settings', 'PREDICTIONS_LOCKED', { locked: input.data.locked });
   return c.json({ ok: true });
 });
 
@@ -693,6 +761,10 @@ function forbidden(c: any, message: string) {
   return c.json({ error: message }, 403);
 }
 
+function tooManyRequests(c: any, message: string) {
+  return c.json({ error: message }, 429);
+}
+
 function notFound(c: any, message: string) {
   return c.json({ error: message }, 404);
 }
@@ -703,6 +775,62 @@ function serverError(c: any) {
 
 function cleanUser(user: User & { password_hash?: string }): User {
   return { id: user.id, name: user.name, email: user.email, role: user.role };
+}
+
+function getClientIp(c: any) {
+  return (
+    c.req.header('CF-Connecting-IP') ||
+    c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    c.req.header('X-Real-IP') ||
+    'unknown'
+  );
+}
+
+async function isLoginTemporarilyLocked(db: D1Database, email: string, ip: string) {
+  const row = await db.prepare(`
+    SELECT COUNT(*) AS failed_count
+    FROM login_attempts
+    WHERE success = 0
+      AND created_at >= datetime('now', '-' || ? || ' minutes')
+      AND (email = ? OR ip = ?)
+  `).bind(LOGIN_WINDOW_MINUTES, email, ip).first<{ failed_count: number }>();
+
+  return Number(row?.failed_count ?? 0) >= LOGIN_MAX_FAILED_ATTEMPTS;
+}
+
+async function logLoginAttempt(db: D1Database, email: string, ip: string, success: boolean) {
+  await db.prepare(`
+    INSERT INTO login_attempts (email, ip, success)
+    VALUES (?, ?, ?)
+  `).bind(email, ip, success ? 1 : 0).run();
+}
+
+async function clearFailedLoginAttempts(db: D1Database, email: string, ip: string) {
+  await db.prepare(`
+    DELETE FROM login_attempts
+    WHERE success = 0 AND (email = ? OR ip = ?)
+  `).bind(email, ip).run();
+}
+
+async function logAdminAction(c: any, action: string, entityType: string, entityId: string | null, detail: unknown) {
+  const admin = c.get('user') as User | null;
+  if (!admin) return;
+
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO admin_audit_logs (admin_user_id, action, entity_type, entity_id, detail, ip)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      admin.id,
+      action,
+      entityType,
+      entityId,
+      detail === null || detail === undefined ? null : JSON.stringify(detail),
+      getClientIp(c)
+    ).run();
+  } catch (error) {
+    console.error('No se pudo registrar auditoría admin.', error);
+  }
 }
 
 function cookieOptions(url: string) {

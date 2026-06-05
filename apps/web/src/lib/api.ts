@@ -146,3 +146,15 @@ export type TournamentResults = {
   fourth_place_team_code: string | null;
   fourth_place_flag_code: string | null;
 };
+
+export type AdminAuditLog = {
+  id: number;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  detail: string | null;
+  ip: string | null;
+  created_at: string;
+  admin_name: string | null;
+  admin_email: string | null;
+};

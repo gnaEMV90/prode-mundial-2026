@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { api, Match, ScoringRules, Team, TournamentResults, User } from '../lib/api';
+import { api, AdminAuditLog, Match, ScoringRules, Team, TournamentResults, User } from '../lib/api';
 import { Message } from '../components/Message';
 import { FlagIcon } from '../components/FlagIcon';
 
@@ -11,22 +11,25 @@ export function Admin() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [rules, setRules] = useState<ScoringRules | null>(null);
   const [tournamentResults, setTournamentResults] = useState<TournamentResults | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   async function load() {
-    const [matchesResponse, usersResponse, teamsResponse, rulesResponse, tournamentResultsResponse] = await Promise.all([
+    const [matchesResponse, usersResponse, teamsResponse, rulesResponse, tournamentResultsResponse, auditLogsResponse] = await Promise.all([
       api<{ matches: Match[] }>('/matches'),
       api<{ users: User[] }>('/admin/users'),
       api<{ teams: Team[] }>('/teams'),
       api<{ rules: ScoringRules }>('/admin/scoring-rules'),
-      api<{ results: TournamentResults }>('/admin/tournament-results')
+      api<{ results: TournamentResults }>('/admin/tournament-results'),
+      api<{ logs: AdminAuditLog[] }>('/admin/audit-logs')
     ]);
     setMatches(matchesResponse.matches);
     setUsers(usersResponse.users);
     setTeams(teamsResponse.teams);
     setRules(rulesResponse.rules);
     setTournamentResults(tournamentResultsResponse.results);
+    setAuditLogs(auditLogsResponse.logs);
   }
 
   useEffect(() => {
@@ -36,6 +39,9 @@ export function Admin() {
   async function recalculate() {
     setError('');
     setMessage('');
+
+    if (!window.confirm('Vas a recalcular todos los puntajes del ranking. ¿Continuar?')) return;
+
     try {
       await api('/admin/recalculate', { method: 'POST' });
       await load();
@@ -48,6 +54,12 @@ export function Admin() {
   async function toggleLock(locked: boolean) {
     setError('');
     setMessage('');
+
+    const text = locked
+      ? 'Vas a bloquear la carga general de pronósticos. ¿Continuar?'
+      : 'Vas a desbloquear la carga general de pronósticos. ¿Continuar?';
+    if (!window.confirm(text)) return;
+
     try {
       await api('/admin/settings/predictions-lock', { method: 'POST', body: { locked } });
       setMessage(locked ? 'Carga bloqueada.' : 'Carga desbloqueada.');
@@ -59,6 +71,12 @@ export function Admin() {
   async function toggleSpecialLock(locked: boolean) {
     setError('');
     setMessage('');
+
+    const text = locked
+      ? 'Vas a bloquear las predicciones especiales. ¿Continuar?'
+      : 'Vas a desbloquear las predicciones especiales. ¿Continuar?';
+    if (!window.confirm(text)) return;
+
     try {
       await api('/admin/settings/special-lock', { method: 'POST', body: { locked } });
       setMessage(locked ? 'Predicciones especiales bloqueadas.' : 'Predicciones especiales desbloqueadas.');
@@ -123,6 +141,7 @@ export function Admin() {
       {tournamentResults && <TournamentResultsAdmin results={tournamentResults} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />}
       {rules && <RulesForm rules={rules} onSaved={load} onMessage={setMessage} onError={setError} />}
       <UsersAdmin users={users} onSaved={load} onMessage={setMessage} onError={setError} />
+      <AuditLogsAdmin logs={auditLogs} />
     </div>
   );
 }
@@ -267,6 +286,10 @@ function ResultRow({
 
     if (!Number.isInteger(homeNumber) || !Number.isInteger(awayNumber) || homeNumber < 0 || awayNumber < 0) {
       onError('Resultado inválido. Usá números enteros mayores o iguales a cero.');
+      return;
+    }
+
+    if (!window.confirm(`Vas a guardar el resultado ${home} ${homeNumber} - ${awayNumber} ${away} y recalcular el ranking. ¿Continuar?`)) {
       return;
     }
 
@@ -519,6 +542,10 @@ function FixtureRow({
       return;
     }
 
+    if (!window.confirm(`Vas a modificar el fixture del partido #${match.match_order}. ¿Continuar?`)) {
+      return;
+    }
+
     setSaving(true);
     try {
       await api(`/admin/matches/${match.id}`, {
@@ -706,6 +733,10 @@ function TournamentResultsAdmin({
       return;
     }
 
+    if (!window.confirm('Vas a guardar las posiciones finales del torneo y recalcular bonus especiales. ¿Continuar?')) {
+      return;
+    }
+
     setSaving(true);
     try {
       await api('/admin/tournament-results', {
@@ -783,6 +814,9 @@ function RulesForm({
     event.preventDefault();
     onMessage('');
     onError('');
+
+    if (!window.confirm('Vas a guardar reglas de puntuación y recalcular puntos. ¿Continuar?')) return;
+
     try {
       await api('/admin/scoring-rules', { method: 'PUT', body: values as unknown as Record<string, unknown> });
       await onSaved();
@@ -929,6 +963,81 @@ function UsersAdmin({
       </div>
     </section>
   );
+}
+
+
+function AuditLogsAdmin({ logs }: { logs: AdminAuditLog[] }) {
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-2xl font-black text-emerald-300">Auditoría admin</h2>
+        <p className="mt-1 text-sm text-slate-300">
+          Últimas acciones sensibles realizadas desde el panel administrador.
+        </p>
+      </div>
+
+      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/10">
+        <table className="min-w-full text-sm">
+          <thead className="bg-white/10 text-left text-slate-300">
+            <tr>
+              <th className="px-4 py-3">Fecha</th>
+              <th className="px-4 py-3">Admin</th>
+              <th className="px-4 py-3">Acción</th>
+              <th className="px-4 py-3">Entidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.length === 0 ? (
+              <tr>
+                <td className="px-4 py-4 text-slate-400" colSpan={4}>
+                  Todavía no hay acciones registradas.
+                </td>
+              </tr>
+            ) : (
+              logs.map((log) => (
+                <tr key={log.id} className="border-t border-white/10 align-top">
+                  <td className="px-4 py-3 text-slate-300">{formatDateTime(log.created_at)}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-bold text-white">{log.admin_name || 'Admin eliminado'}</div>
+                    <div className="text-xs text-slate-400">{log.admin_email || 'Sin email'}</div>
+                  </td>
+                  <td className="px-4 py-3 font-bold text-emerald-300">{labelForAuditAction(log.action)}</td>
+                  <td className="px-4 py-3 text-slate-300">
+                    <div>{log.entity_type}</div>
+                    {log.entity_id && <div className="text-xs text-slate-500">ID: {log.entity_id}</div>}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString('es-AR', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  });
+}
+
+function labelForAuditAction(action: string) {
+  const labels: Record<string, string> = {
+    RESET_USER_PASSWORD: 'Reseteo de clave',
+    UPDATE_FIXTURE: 'Fixture editado',
+    SAVE_MATCH_RESULT: 'Resultado cargado',
+    UPDATE_TOURNAMENT_RESULTS: 'Finales del torneo',
+    LOCK_SPECIAL_PREDICTIONS: 'Especiales bloqueadas',
+    UNLOCK_SPECIAL_PREDICTIONS: 'Especiales desbloqueadas',
+    UPDATE_SCORING_RULES: 'Reglas actualizadas',
+    RECALCULATE_POINTS: 'Puntos recalculados',
+    LOCK_PREDICTIONS: 'Carga bloqueada',
+    UNLOCK_PREDICTIONS: 'Carga desbloqueada'
+  };
+
+  return labels[action] || action;
 }
 
 function labelForRule(key: keyof ScoringRules) {
