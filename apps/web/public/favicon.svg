@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#020617"/>
+  <circle cx="64" cy="64" r="42" fill="#34d399"/>
+  <path
+    d="M64 22a42 42 0 0 1 36.37 21L83 53 64 42 45 53 27.63 43A42 42 0 0 1 64 22Z"
+    fill="#ecfdf5"
+    opacity=".95"
+  />
+  <path
+    d="M27.63 85A42 42 0 0 0 64 106a42 42 0 0 0 36.37-21L83 75 64 86 45 75 27.63 85Z"
+    fill="#ecfdf5"
+    opacity=".95"
+  />
+  <path
+    d="M45 53 64 42l19 11v22L64 86 45 75V53Z"
+    fill="#020617"
+  />
+  <path
+    d="M45 53 27.63 43A41.8 41.8 0 0 0 22 64c0 7.64 2.04 14.8 5.63 21L45 75V53Z"
+    fill="#10b981"
+  />
+  <path
+    d="M83 53 100.37 43A41.8 41.8 0 0 1 106 64c0 7.64-2.04 14.8-5.63 21L83 75V53Z"
+    fill="#10b981"
+  />
+  <text
+    x="64"
+    y="71"
+    text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="22"
+    font-weight="900"
+    fill="#ffffff"
+  >
+    26
+  </text>
+</svg>
