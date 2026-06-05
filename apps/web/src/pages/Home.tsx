@@ -4,8 +4,12 @@ import { useAuth } from '../lib/auth';
 
 const PUBLIC_URL = 'https://prodemundial2026-aci.pages.dev';
 
-const SHARE_TEXT =
-  'Sumate al Prode Mundial 2026. Registrate gratis, cargá tus pronósticos y competí en el ranking general.';
+const SHARE_TEXT = `Prode Mundial 2026
+
+Jugá gratis al Prode del Mundial 2026.
+Cargá tus pronósticos y competí en el ranking general.
+
+Entrá acá:`;
 
 export function Home() {
   const { user } = useAuth();
@@ -27,7 +31,7 @@ export function Home() {
     }
   }
 
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${SHARE_TEXT}\n\n${PUBLIC_URL}`)}`;
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${SHARE_TEXT}\n${PUBLIC_URL}`)}`;
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
