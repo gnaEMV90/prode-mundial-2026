@@ -1,0 +1,25 @@
+{
+  "name": "@prode/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "build": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply prode_mundial_2026 --local",
+    "db:seed:local": "wrangler d1 execute prode_mundial_2026 --local --file=../../database/seed.sql",
+    "db:migrate:remote": "wrangler d1 migrations apply prode_mundial_2026 --remote",
+    "db:seed:remote": "wrangler d1 execute prode_mundial_2026 --remote --file=../../database/seed.sql"
+  },
+  "dependencies": {
+    "hono": "^4.6.20",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250129.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^3.109.2"
+  }
+}

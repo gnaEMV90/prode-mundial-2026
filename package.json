@@ -1,0 +1,26 @@
+{
+  "name": "prode-mundial-2026",
+  "version": "0.1.0",
+  "private": true,
+  "description": "App web gratuita de Prode para el Mundial 2026 con React, Cloudflare Workers y D1.",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/api",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "db:migrate:local": "npm run db:migrate:local -w apps/api",
+    "db:seed:local": "npm run db:seed:local -w apps/api",
+    "db:migrate:remote": "npm run db:migrate:remote -w apps/api",
+    "db:seed:remote": "npm run db:seed:remote -w apps/api",
+    "deploy:api": "npm run deploy -w apps/api",
+    "deploy:web": "npm run deploy -w apps/web"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

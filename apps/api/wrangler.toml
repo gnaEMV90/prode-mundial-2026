@@ -1,0 +1,13 @@
+name = "prode-mundial-2026-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-29"
+
+[vars]
+APP_ENV = "local"
+CORS_ORIGIN = "http://localhost:5173"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "prode_mundial_2026"
+database_id = "REEMPLAZAR_EN_CLOUDFLARE"
+migrations_dir = "migrations"
