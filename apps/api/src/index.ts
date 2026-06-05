@@ -627,7 +627,7 @@ function cleanUser(user: User & { password_hash?: string }): User {
 function cookieOptions(url: string) {
   return {
     httpOnly: true,
-    sameSite: 'Lax' as const,
+    sameSite: 'None' as const,
     secure: url.startsWith('https://'),
     path: '/',
     maxAge: SESSION_DAYS * 24 * 60 * 60
