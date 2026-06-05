@@ -4,7 +4,7 @@ compatibility_date = "2025-01-29"
 
 [vars]
 APP_ENV = "production"
-CORS_ORIGIN = "https://prode-mundial-2026-dfg.pages.dev"
+CORS_ORIGIN = "https://prodemundial2026-aci.pages.dev"
 
 [[d1_databases]]
 binding = "DB"
