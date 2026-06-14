@@ -24,7 +24,6 @@ export function Ranking() {
   }, [ranking, search]);
 
   const leader = ranking[0] || null;
-  const myRow = ranking.find((row) => row.id === user?.id) || null;
   const totalPredictions = ranking.reduce((sum, row) => sum + Number(row.predicted_count || 0), 0);
   const totalPoints = ranking.reduce((sum, row) => sum + Number(row.points || 0), 0);
 
@@ -34,7 +33,7 @@ export function Ranking() {
         <div>
           <h1 className="text-3xl font-black">Ranking general</h1>
           <p className="mt-2 text-slate-300">
-            Ordenado por puntos, exactos, aciertos de ganador/empate y cantidad de pronósticos.
+            Ordenado por puntos totales, exactos, aciertos de ganador/empate y cantidad de pronósticos.
           </p>
         </div>
 
@@ -79,7 +78,7 @@ export function Ranking() {
                 <th className="px-4 py-3">#</th>
                 <th className="px-4 py-3">Jugador</th>
                 <th className="px-4 py-3 text-right">Puntos</th>
-                <th className="px-4 py-3 text-right">Partidos</th>
+                <th className="px-4 py-3 text-right">Pts. partidos</th>
                 <th className="px-4 py-3 text-right">Bonus</th>
                 <th className="px-4 py-3 text-right">Exactos</th>
                 <th className="px-4 py-3 text-right">Aciertos</th>
@@ -103,7 +102,11 @@ export function Ranking() {
                 </tr>
               ))}
               {filteredRanking.length === 0 && (
-                <tr><td className="px-4 py-8 text-center text-slate-300" colSpan={8}>No hay jugadores para mostrar.</td></tr>
+                <tr>
+                  <td className="px-4 py-8 text-center text-slate-300" colSpan={8}>
+                    No hay jugadores para mostrar.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -126,10 +129,11 @@ export function Ranking() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
-                <SmallStat label="Partidos" value={row.match_points} />
+              <div className="mt-4 grid grid-cols-2 gap-2 text-center text-sm">
+                <SmallStat label="Pts. partidos" value={row.match_points} />
                 <SmallStat label="Bonus" value={row.special_points} />
                 <SmallStat label="Exactos" value={row.exact_hits} />
+                <SmallStat label="Pronósticos" value={row.predicted_count} />
               </div>
             </article>
           ))}
