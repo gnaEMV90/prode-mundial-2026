@@ -29,11 +29,6 @@ type Match = {
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED';
   venue: string | null;
   match_order: number;
-  external_provider: string | null;
-  external_match_id: string | null;
-  last_synced_at: string | null;
-  result_source: 'MANUAL' | 'FOOTBALL_DATA';
-  manually_locked: number;
 };
 
 type ScoringRules = {
@@ -75,15 +70,32 @@ type LocalMatchForSync = Match & {
   home_team_code: string | null;
   away_team_name: string | null;
   away_team_code: string | null;
+  external_provider: string | null;
+  external_match_id: string | null;
+  last_synced_at: string | null;
+  result_source: 'MANUAL' | 'FOOTBALL_DATA';
+  manually_locked: number;
+};
+
+type FootballDataTeam = {
+  id: number | null;
+  name: string | null;
+  shortName?: string | null;
+  tla?: string | null;
 };
 
 type FootballDataMatch = {
   id: number;
   utcDate: string;
   status: string;
-  homeTeam: { id: number | null; name: string | null; shortName?: string | null; tla?: string | null };
-  awayTeam: { id: number | null; name: string | null; shortName?: string | null; tla?: string | null };
-  score: { fullTime?: { home: number | null; away: number | null } | null };
+  homeTeam: FootballDataTeam;
+  awayTeam: FootballDataTeam;
+  score: {
+    fullTime?: {
+      home: number | null;
+      away: number | null;
+    } | null;
+  };
 };
 
 type FootballDataMatchesResponse = {
@@ -99,8 +111,37 @@ type ResultSyncSummary = {
   updated_count: number;
   skipped_count: number;
   unmatched_count: number;
-  updated_matches: Array<{ match_order: number; home_team: string; away_team: string; home_score: number; away_score: number }>;
-  unmatched_matches: Array<{ external_match_id: number; home_team: string | null; away_team: string | null; utc_date: string; home_score: number; away_score: number }>;
+  updated_matches: Array<{
+    match_order: number;
+    home_team: string;
+    away_team: string;
+    home_score: number;
+    away_score: number;
+  }>;
+  unmatched_matches: Array<{
+    external_match_id: number;
+    home_team: string | null;
+    away_team: string | null;
+    utc_date: string;
+    home_score: number;
+    away_score: number;
+  }>;
+};
+
+type ResultSyncLog = {
+  id: number;
+  provider: string;
+  competition_code: string;
+  season: number;
+  status: 'SUCCESS' | 'ERROR' | string;
+  fetched_count: number;
+  finished_count: number;
+  updated_count: number;
+  skipped_count: number;
+  unmatched_count: number;
+  detail: string | null;
+  error_message: string | null;
+  created_at: string;
 };
 
 const app = new Hono<{ Bindings: Env; Variables: { user: User | null } }>();
@@ -673,50 +714,6 @@ app.post('/admin/matches/:id/result', requireAdmin, async (c) => {
   return c.json({ ok: true });
 });
 
-app.post('/admin/sync-results', requireAdmin, async (c) => {
-  const token = c.env.FOOTBALL_DATA_API_TOKEN;
-
-  if (!token) {
-    await insertResultSyncLog(c.env.DB, {
-      provider: 'FOOTBALL_DATA',
-      competition_code: 'WC',
-      season: 2026,
-      fetched_count: 0,
-      finished_count: 0,
-      updated_count: 0,
-      skipped_count: 0,
-      unmatched_count: 0,
-      updated_matches: [],
-      unmatched_matches: []
-    }, 'No está configurado FOOTBALL_DATA_API_TOKEN.');
-
-    return c.json({ error: 'No está configurado el token de football-data en el Worker.' }, 500);
-  }
-
-  try {
-    const sync = await syncFootballDataResults(c.env.DB, token);
-    await logAdminAction(c, 'SYNC_MATCH_RESULTS', 'matches', null, sync);
-    return c.json({ ok: true, sync });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo sincronizar resultados.';
-
-    await insertResultSyncLog(c.env.DB, {
-      provider: 'FOOTBALL_DATA',
-      competition_code: 'WC',
-      season: 2026,
-      fetched_count: 0,
-      finished_count: 0,
-      updated_count: 0,
-      skipped_count: 0,
-      unmatched_count: 0,
-      updated_matches: [],
-      unmatched_matches: []
-    }, message);
-
-    return c.json({ error: message }, 502);
-  }
-});
-
 app.get('/admin/tournament-results', requireAdmin, async (c) => {
   const results = await getTournamentResults(c.env.DB);
   return c.json({ results });
@@ -806,6 +803,36 @@ app.post('/admin/recalculate', requireAdmin, async (c) => {
   await recalculateAll(c.env.DB);
   await logAdminAction(c, 'RECALCULATE_POINTS', 'system', 'ranking', null);
   return c.json({ ok: true });
+});
+
+app.post('/admin/sync-results', requireAdmin, async (c) => {
+  const summary = await syncFootballDataResults(c.env.DB, c.env.FOOTBALL_DATA_API_TOKEN);
+  await logAdminAction(c, 'SYNC_RESULTS', 'system', 'football-data', summary);
+  return c.json({ summary });
+});
+
+app.get('/admin/sync-results/logs', requireAdmin, async (c) => {
+  const logs = await c.env.DB.prepare(`
+    SELECT
+      id,
+      provider,
+      competition_code,
+      season,
+      status,
+      fetched_count,
+      finished_count,
+      updated_count,
+      skipped_count,
+      unmatched_count,
+      detail,
+      error_message,
+      created_at
+    FROM result_sync_logs
+    ORDER BY id DESC
+    LIMIT 20
+  `).all<ResultSyncLog>();
+
+  return c.json({ logs: logs.results });
 });
 
 app.post('/admin/settings/predictions-lock', requireAdmin, async (c) => {
@@ -1082,230 +1109,6 @@ async function allTeamsExist(db: D1Database, ids: number[]) {
   return rows.results.length === uniqueIds.length;
 }
 
-async function syncFootballDataResults(db: D1Database, token: string): Promise<ResultSyncSummary> {
-  const provider = 'FOOTBALL_DATA' as const;
-  const competitionCode = 'WC';
-  const season = 2026;
-  const url = `https://api.football-data.org/v4/competitions/${competitionCode}/matches?season=${season}`;
-
-  const response = await fetch(url, {
-    headers: {
-      'X-Auth-Token': token,
-      Accept: 'application/json'
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(`football-data respondió ${response.status}. Revisá el token, el límite del plan gratuito o la cobertura del Mundial 2026.`);
-  }
-
-  const payload = (await response.json()) as FootballDataMatchesResponse;
-  const externalMatches = Array.isArray(payload.matches) ? payload.matches : [];
-  const localMatches = await getLocalMatchesForSync(db);
-
-  const summary: ResultSyncSummary = {
-    provider,
-    competition_code: competitionCode,
-    season,
-    fetched_count: externalMatches.length,
-    finished_count: 0,
-    updated_count: 0,
-    skipped_count: 0,
-    unmatched_count: 0,
-    updated_matches: [],
-    unmatched_matches: []
-  };
-
-  for (const externalMatch of externalMatches) {
-    const fullTime = externalMatch.score?.fullTime;
-    const homeScore = fullTime?.home;
-    const awayScore = fullTime?.away;
-
-    if (!isFootballDataFinishedStatus(externalMatch.status) || homeScore === null || homeScore === undefined || awayScore === null || awayScore === undefined) {
-      continue;
-    }
-
-    summary.finished_count += 1;
-
-    const localMatch = findLocalMatchForExternalMatch(externalMatch, localMatches);
-    if (!localMatch) {
-      summary.unmatched_count += 1;
-      summary.unmatched_matches.push({
-        external_match_id: externalMatch.id,
-        home_team: externalMatch.homeTeam?.name ?? null,
-        away_team: externalMatch.awayTeam?.name ?? null,
-        utc_date: externalMatch.utcDate,
-        home_score: homeScore,
-        away_score: awayScore
-      });
-      continue;
-    }
-
-    if (Number(localMatch.manually_locked) === 1) {
-      summary.skipped_count += 1;
-      continue;
-    }
-
-    const externalMatchId = String(externalMatch.id);
-    const alreadySynced =
-      localMatch.status === 'FINISHED' &&
-      localMatch.home_score === homeScore &&
-      localMatch.away_score === awayScore &&
-      localMatch.external_provider === provider &&
-      localMatch.external_match_id === externalMatchId;
-
-    if (alreadySynced) {
-      summary.skipped_count += 1;
-      continue;
-    }
-
-    await db.prepare(`
-      UPDATE matches
-      SET
-        home_score = ?,
-        away_score = ?,
-        status = 'FINISHED',
-        external_provider = ?,
-        external_match_id = ?,
-        last_synced_at = CURRENT_TIMESTAMP,
-        result_source = 'FOOTBALL_DATA',
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-        AND manually_locked = 0
-    `).bind(homeScore, awayScore, provider, externalMatchId, localMatch.id).run();
-
-    await recalculateMatch(db, localMatch.id);
-
-    summary.updated_count += 1;
-    summary.updated_matches.push({
-      match_order: localMatch.match_order,
-      home_team: localMatch.home_team_name || externalMatch.homeTeam?.name || 'Local',
-      away_team: localMatch.away_team_name || externalMatch.awayTeam?.name || 'Visitante',
-      home_score: homeScore,
-      away_score: awayScore
-    });
-  }
-
-  await insertResultSyncLog(db, summary, null);
-  return summary;
-}
-
-async function getLocalMatchesForSync(db: D1Database) {
-  const rows = await db.prepare(`
-    SELECT
-      m.*,
-      ht.name AS home_team_name,
-      ht.code AS home_team_code,
-      at.name AS away_team_name,
-      at.code AS away_team_code
-    FROM matches m
-    LEFT JOIN teams ht ON ht.id = m.home_team_id
-    LEFT JOIN teams at ON at.id = m.away_team_id
-    ORDER BY m.match_order ASC
-  `).all<LocalMatchForSync>();
-
-  return rows.results;
-}
-
-function findLocalMatchForExternalMatch(externalMatch: FootballDataMatch, localMatches: LocalMatchForSync[]) {
-  const provider = 'FOOTBALL_DATA';
-  const externalMatchId = String(externalMatch.id);
-
-  const byExternalId = localMatches.find(
-    (localMatch) => localMatch.external_provider === provider && localMatch.external_match_id === externalMatchId
-  );
-  if (byExternalId) return byExternalId;
-
-  const teamCandidates = localMatches.filter((localMatch) => teamsMatchInSameOrder(localMatch, externalMatch));
-  if (teamCandidates.length === 0) return null;
-  if (teamCandidates.length === 1) return teamCandidates[0];
-
-  const externalTime = new Date(externalMatch.utcDate).getTime();
-  if (!Number.isNaN(externalTime)) {
-    const sameDateCandidates = teamCandidates.filter((localMatch) => {
-      const localTime = new Date(localMatch.starts_at).getTime();
-      if (Number.isNaN(localTime)) return false;
-      const hoursDiff = Math.abs(localTime - externalTime) / (1000 * 60 * 60);
-      return hoursDiff <= 36;
-    });
-
-    if (sameDateCandidates.length === 1) return sameDateCandidates[0];
-  }
-
-  return null;
-}
-
-function teamsMatchInSameOrder(localMatch: LocalMatchForSync, externalMatch: FootballDataMatch) {
-  return teamMatches(localMatch.home_team_code, localMatch.home_team_name, externalMatch.homeTeam)
-    && teamMatches(localMatch.away_team_code, localMatch.away_team_name, externalMatch.awayTeam);
-}
-
-function teamMatches(localCode: string | null, localName: string | null, externalTeam: FootballDataMatch['homeTeam']) {
-  const externalCode = externalTeam?.tla || null;
-  if (localCode && externalCode && normalizeTeamCode(localCode) === normalizeTeamCode(externalCode)) return true;
-
-  const localNormalized = normalizeText(localName);
-  const externalNames = [externalTeam?.name, externalTeam?.shortName]
-    .map((value) => normalizeText(value))
-    .filter(Boolean);
-
-  return Boolean(localNormalized && externalNames.includes(localNormalized));
-}
-
-function normalizeTeamCode(value: string) {
-  return value.trim().toUpperCase();
-}
-
-function normalizeText(value: string | null | undefined) {
-  return (value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-function isFootballDataFinishedStatus(status: string) {
-  return ['FINISHED', 'AWARDED'].includes(status);
-}
-
-async function insertResultSyncLog(db: D1Database, summary: ResultSyncSummary, errorMessage: string | null) {
-  const status = errorMessage ? 'ERROR' : 'SUCCESS';
-  const detail = JSON.stringify({
-    updated_matches: summary.updated_matches.slice(0, 50),
-    unmatched_matches: summary.unmatched_matches.slice(0, 50)
-  });
-
-  await db.prepare(`
-    INSERT INTO result_sync_logs (
-      provider,
-      competition_code,
-      season,
-      status,
-      fetched_count,
-      finished_count,
-      updated_count,
-      skipped_count,
-      unmatched_count,
-      detail,
-      error_message
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    summary.provider,
-    summary.competition_code,
-    summary.season,
-    status,
-    summary.fetched_count,
-    summary.finished_count,
-    summary.updated_count,
-    summary.skipped_count,
-    summary.unmatched_count,
-    detail,
-    errorMessage
-  ).run();
-}
-
 async function recalculateAll(db: D1Database) {
   const rows = await db.prepare("SELECT id FROM matches WHERE status = 'FINISHED'").all<{ id: number }>();
   for (const row of rows.results) {
@@ -1457,27 +1260,15 @@ function getOutcome(home: number, away: number) {
   return home > away ? 'HOME' : 'AWAY';
 }
 
-async function runScheduledResultSync(env: Env) {
-  const token = env.FOOTBALL_DATA_API_TOKEN;
+const FOOTBALL_DATA_PROVIDER = 'FOOTBALL_DATA';
+const FOOTBALL_DATA_COMPETITION_CODE = 'WC';
+const FOOTBALL_DATA_SEASON = 2026;
 
-  if (!token) {
-    await insertResultSyncLog(env.DB, createEmptyResultSyncSummary(), 'No está configurado FOOTBALL_DATA_API_TOKEN.');
-    return;
-  }
-
-  try {
-    await syncFootballDataResults(env.DB, token);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo sincronizar resultados automáticamente.';
-    await insertResultSyncLog(env.DB, createEmptyResultSyncSummary(), message);
-  }
-}
-
-function createEmptyResultSyncSummary(): ResultSyncSummary {
-  return {
-    provider: 'FOOTBALL_DATA',
-    competition_code: 'WC',
-    season: 2026,
+async function syncFootballDataResults(db: D1Database, token?: string): Promise<ResultSyncSummary> {
+  const summary: ResultSyncSummary = {
+    provider: FOOTBALL_DATA_PROVIDER,
+    competition_code: FOOTBALL_DATA_COMPETITION_CODE,
+    season: FOOTBALL_DATA_SEASON,
     fetched_count: 0,
     finished_count: 0,
     updated_count: 0,
@@ -1486,11 +1277,315 @@ function createEmptyResultSyncSummary(): ResultSyncSummary {
     updated_matches: [],
     unmatched_matches: []
   };
+
+  try {
+    if (!token) {
+      throw new Error('No está configurado FOOTBALL_DATA_API_TOKEN en el Worker.');
+    }
+
+    const externalMatches = await fetchFootballDataMatches(token);
+    summary.fetched_count = externalMatches.length;
+
+    const finishedMatches = externalMatches.filter((match) => {
+      const homeScore = match.score.fullTime?.home;
+      const awayScore = match.score.fullTime?.away;
+      return match.status === 'FINISHED' && Number.isInteger(homeScore) && Number.isInteger(awayScore);
+    });
+
+    summary.finished_count = finishedMatches.length;
+
+    const localMatches = await getLocalMatchesForSync(db);
+
+    for (const externalMatch of finishedMatches) {
+      const homeScoreValue = externalMatch.score.fullTime?.home;
+      const awayScoreValue = externalMatch.score.fullTime?.away;
+
+      if (!Number.isInteger(homeScoreValue) || !Number.isInteger(awayScoreValue)) {
+        summary.skipped_count += 1;
+        continue;
+      }
+
+      const homeScore = Number(homeScoreValue);
+      const awayScore = Number(awayScoreValue);
+
+      const localMatch = findLocalMatchForSync(externalMatch, localMatches);
+
+      if (!localMatch) {
+        summary.unmatched_count += 1;
+        summary.unmatched_matches.push({
+          external_match_id: externalMatch.id,
+          home_team: externalMatch.homeTeam.name,
+          away_team: externalMatch.awayTeam.name,
+          utc_date: externalMatch.utcDate,
+          home_score: homeScore,
+          away_score: awayScore
+        });
+        continue;
+      }
+
+      const externalMatchId = String(externalMatch.id);
+      const hasResultChange =
+        localMatch.status !== 'FINISHED' ||
+        localMatch.home_score !== homeScore ||
+        localMatch.away_score !== awayScore;
+
+      if (localMatch.manually_locked === 1) {
+        await db.prepare(`
+          UPDATE matches
+          SET external_provider = ?, external_match_id = ?, last_synced_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(FOOTBALL_DATA_PROVIDER, externalMatchId, localMatch.id).run();
+
+        summary.skipped_count += 1;
+        continue;
+      }
+
+      if (!hasResultChange) {
+        await db.prepare(`
+          UPDATE matches
+          SET external_provider = ?, external_match_id = ?, last_synced_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(FOOTBALL_DATA_PROVIDER, externalMatchId, localMatch.id).run();
+
+        summary.skipped_count += 1;
+        continue;
+      }
+
+      await db.prepare(`
+        UPDATE matches
+        SET
+          home_score = ?,
+          away_score = ?,
+          status = 'FINISHED',
+          external_provider = ?,
+          external_match_id = ?,
+          last_synced_at = CURRENT_TIMESTAMP,
+          result_source = 'FOOTBALL_DATA',
+          manually_locked = 0,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(homeScore, awayScore, FOOTBALL_DATA_PROVIDER, externalMatchId, localMatch.id).run();
+
+      await recalculateMatch(db, localMatch.id);
+
+      summary.updated_count += 1;
+      summary.updated_matches.push({
+        match_order: localMatch.match_order,
+        home_team: localMatch.home_team_name || externalMatch.homeTeam.name || 'Local',
+        away_team: localMatch.away_team_name || externalMatch.awayTeam.name || 'Visitante',
+        home_score: homeScore,
+        away_score: awayScore
+      });
+    }
+
+    await saveResultSyncLog(db, summary, 'SUCCESS', null);
+    return summary;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'No se pudo sincronizar resultados.';
+    await saveResultSyncLog(db, summary, 'ERROR', message);
+    throw error;
+  }
 }
 
+async function fetchFootballDataMatches(token: string): Promise<FootballDataMatch[]> {
+  const url = `https://api.football-data.org/v4/competitions/${FOOTBALL_DATA_COMPETITION_CODE}/matches?season=${FOOTBALL_DATA_SEASON}`;
+  const response = await fetch(url, {
+    headers: {
+      'X-Auth-Token': token
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`football-data.org respondió ${response.status}. ${text || 'No se pudieron obtener resultados.'}`);
+  }
+
+  const payload = await response.json() as FootballDataMatchesResponse;
+  return Array.isArray(payload.matches) ? payload.matches : [];
+}
+
+async function getLocalMatchesForSync(db: D1Database) {
+  const rows = await db.prepare(`
+    SELECT
+      m.*,
+      ht.name AS home_team_name,
+      ht.code AS home_team_code,
+      at.name AS away_team_name,
+      at.code AS away_team_code
+    FROM matches m
+    LEFT JOIN teams ht ON ht.id = m.home_team_id
+    LEFT JOIN teams at ON at.id = m.away_team_id
+    WHERE m.home_team_id IS NOT NULL
+      AND m.away_team_id IS NOT NULL
+  `).all<LocalMatchForSync>();
+
+  return rows.results;
+}
+
+function findLocalMatchForSync(externalMatch: FootballDataMatch, localMatches: LocalMatchForSync[]) {
+  const externalId = String(externalMatch.id);
+  const directMatch = localMatches.find((match) => match.external_provider === FOOTBALL_DATA_PROVIDER && match.external_match_id === externalId);
+  if (directMatch) return directMatch;
+
+  const candidates = localMatches
+    .filter((match) => teamsMatchForSync(externalMatch.homeTeam, match.home_team_name, match.home_team_code))
+    .filter((match) => teamsMatchForSync(externalMatch.awayTeam, match.away_team_name, match.away_team_code))
+    .map((match) => ({ match, diff: dateDiffMs(externalMatch.utcDate, match.starts_at) }))
+    .sort((a, b) => a.diff - b.diff);
+
+  const closeCandidate = candidates.find((candidate) => candidate.diff <= 36 * 60 * 60 * 1000);
+  return closeCandidate?.match || candidates[0]?.match || null;
+}
+
+function teamsMatchForSync(
+  externalTeam: FootballDataMatch['homeTeam'],
+  localName: string | null,
+  localCode: string | null
+) {
+  const externalCodes = [externalTeam.tla, externalTeam.shortName, externalTeam.name].filter((value): value is string => Boolean(value));
+  const localCodes = [localCode, localName].filter((value): value is string => Boolean(value));
+
+  const externalCanonical = externalCodes.map(canonicalTeamName);
+  const localCanonical = localCodes.map(canonicalTeamName);
+
+  return externalCanonical.some((externalValue) => localCanonical.includes(externalValue));
+}
+
+function canonicalTeamName(value: string) {
+  const normalized = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  const aliases: Record<string, string> = {
+    arg: 'argentina',
+    argentina: 'argentina',
+    aus: 'australia',
+    australia: 'australia',
+    bel: 'belgium',
+    belgium: 'belgium',
+    belgica: 'belgium',
+    bra: 'brazil',
+    brazil: 'brazil',
+    brasil: 'brazil',
+    can: 'canada',
+    canada: 'canada',
+    col: 'colombia',
+    colombia: 'colombia',
+    cro: 'croatia',
+    croatia: 'croatia',
+    croacia: 'croatia',
+    den: 'denmark',
+    denmark: 'denmark',
+    dinamarca: 'denmark',
+    ecu: 'ecuador',
+    ecuador: 'ecuador',
+    eng: 'england',
+    england: 'england',
+    inglaterra: 'england',
+    esp: 'spain',
+    spain: 'spain',
+    espana: 'spain',
+    fra: 'france',
+    france: 'france',
+    francia: 'france',
+    ger: 'germany',
+    germany: 'germany',
+    alemania: 'germany',
+    ita: 'italy',
+    italy: 'italy',
+    italia: 'italy',
+    jpn: 'japan',
+    japan: 'japan',
+    japon: 'japan',
+    kor: 'south korea',
+    korea: 'south korea',
+    'korea republic': 'south korea',
+    'south korea': 'south korea',
+    'corea del sur': 'south korea',
+    mex: 'mexico',
+    mexico: 'mexico',
+    mar: 'morocco',
+    morocco: 'morocco',
+    marruecos: 'morocco',
+    ned: 'netherlands',
+    netherlands: 'netherlands',
+    holanda: 'netherlands',
+    'paises bajos': 'netherlands',
+    por: 'portugal',
+    portugal: 'portugal',
+    sui: 'switzerland',
+    switzerland: 'switzerland',
+    suiza: 'switzerland',
+    tur: 'turkiye',
+    turkey: 'turkiye',
+    turkiye: 'turkiye',
+    turquia: 'turkiye',
+    usa: 'usa',
+    'united states': 'usa',
+    'united states of america': 'usa',
+    'estados unidos': 'usa',
+    uru: 'uruguay',
+    uruguay: 'uruguay'
+  };
+
+  return aliases[normalized] || normalized;
+}
+
+function dateDiffMs(valueA: string, valueB: string) {
+  const dateA = new Date(valueA).getTime();
+  const dateB = new Date(valueB).getTime();
+  if (Number.isNaN(dateA) || Number.isNaN(dateB)) return Number.MAX_SAFE_INTEGER;
+  return Math.abs(dateA - dateB);
+}
+
+async function saveResultSyncLog(
+  db: D1Database,
+  summary: ResultSyncSummary,
+  status: 'SUCCESS' | 'ERROR',
+  errorMessage: string | null
+) {
+  await db.prepare(`
+    INSERT INTO result_sync_logs (
+      provider,
+      competition_code,
+      season,
+      status,
+      fetched_count,
+      finished_count,
+      updated_count,
+      skipped_count,
+      unmatched_count,
+      detail,
+      error_message
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    summary.provider,
+    summary.competition_code,
+    summary.season,
+    status,
+    summary.fetched_count,
+    summary.finished_count,
+    summary.updated_count,
+    summary.skipped_count,
+    summary.unmatched_count,
+    JSON.stringify({ updated_matches: summary.updated_matches, unmatched_matches: summary.unmatched_matches }),
+    errorMessage
+  ).run();
+}
+
+
 export default {
-  fetch: app.fetch,
-  scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(runScheduledResultSync(env));
+  fetch: (request: Request, env: Env, ctx: ExecutionContext) => app.fetch(request, env, ctx),
+  scheduled: async (_event: unknown, env: Env) => {
+    try {
+      await syncFootballDataResults(env.DB, env.FOOTBALL_DATA_API_TOKEN);
+    } catch (error) {
+      console.error('No se pudo sincronizar resultados automáticamente.', error);
+    }
   }
 };

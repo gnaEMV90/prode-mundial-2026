@@ -6,12 +6,11 @@ compatibility_date = "2025-01-29"
 APP_ENV = "production"
 CORS_ORIGIN = "https://prodemundial2026-aci.pages.dev"
 
-
-[triggers]
-crons = ["*/30 * * * *"]
-
 [[d1_databases]]
 binding = "DB"
 database_name = "prode_mundial_2026"
 database_id = "cffcf0cc-dd5e-4c00-891d-658d0884b27b"
 migrations_dir = "migrations"
+
+[triggers]
+crons = ["*/30 * * * *"]

@@ -52,17 +52,17 @@ export type Match = {
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED';
   venue: string | null;
   match_order: number;
-  external_provider: string | null;
-  external_match_id: string | null;
-  last_synced_at: string | null;
-  result_source: 'MANUAL' | 'FOOTBALL_DATA';
-  manually_locked: number;
   home_team_name: string | null;
   away_team_name: string | null;
   home_team_code: string | null;
   away_team_code: string | null;
   home_flag_code: string | null;
   away_flag_code: string | null;
+  external_provider: string | null;
+  external_match_id: string | null;
+  last_synced_at: string | null;
+  result_source: 'MANUAL' | 'FOOTBALL_DATA';
+  manually_locked: number;
 };
 
 export type Prediction = {
@@ -189,4 +189,20 @@ export type ResultSyncSummary = {
     home_score: number;
     away_score: number;
   }>;
+};
+
+export type ResultSyncLog = {
+  id: number;
+  provider: string;
+  competition_code: string;
+  season: number;
+  status: 'SUCCESS' | 'ERROR' | string;
+  fetched_count: number;
+  finished_count: number;
+  updated_count: number;
+  skipped_count: number;
+  unmatched_count: number;
+  detail: string | null;
+  error_message: string | null;
+  created_at: string;
 };

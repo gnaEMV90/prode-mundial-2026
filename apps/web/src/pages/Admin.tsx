@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { api, AdminAuditLog, Match, ResultSyncSummary, ScoringRules, Team, TournamentResults, User } from '../lib/api';
+import { api, AdminAuditLog, Match, ResultSyncLog, ResultSyncSummary, ScoringRules, Team, TournamentResults, User } from '../lib/api';
 import { Message } from '../components/Message';
 import { FlagIcon } from '../components/FlagIcon';
 
@@ -12,19 +12,20 @@ export function Admin() {
   const [rules, setRules] = useState<ScoringRules | null>(null);
   const [tournamentResults, setTournamentResults] = useState<TournamentResults | null>(null);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
-  const [lastSync, setLastSync] = useState<ResultSyncSummary | null>(null);
+  const [syncLogs, setSyncLogs] = useState<ResultSyncLog[]>([]);
   const [syncingResults, setSyncingResults] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   async function load() {
-    const [matchesResponse, usersResponse, teamsResponse, rulesResponse, tournamentResultsResponse, auditLogsResponse] = await Promise.all([
+    const [matchesResponse, usersResponse, teamsResponse, rulesResponse, tournamentResultsResponse, auditLogsResponse, syncLogsResponse] = await Promise.all([
       api<{ matches: Match[] }>('/matches'),
       api<{ users: User[] }>('/admin/users'),
       api<{ teams: Team[] }>('/teams'),
       api<{ rules: ScoringRules }>('/admin/scoring-rules'),
       api<{ results: TournamentResults }>('/admin/tournament-results'),
-      api<{ logs: AdminAuditLog[] }>('/admin/audit-logs')
+      api<{ logs: AdminAuditLog[] }>('/admin/audit-logs'),
+      api<{ logs: ResultSyncLog[] }>('/admin/sync-results/logs')
     ]);
     setMatches(matchesResponse.matches);
     setUsers(usersResponse.users);
@@ -32,6 +33,7 @@ export function Admin() {
     setRules(rulesResponse.rules);
     setTournamentResults(tournamentResultsResponse.results);
     setAuditLogs(auditLogsResponse.logs);
+    setSyncLogs(syncLogsResponse.logs);
   }
 
   useEffect(() => {
@@ -53,24 +55,21 @@ export function Admin() {
     }
   }
 
-
   async function syncResults() {
     setError('');
     setMessage('');
-    setLastSync(null);
 
-    if (!window.confirm('Vas a consultar football-data.org y actualizar resultados finalizados no bloqueados manualmente. ¿Continuar?')) return;
+    if (!window.confirm('Vas a sincronizar resultados desde football-data.org y recalcular los partidos actualizados. ¿Continuar?')) return;
 
     setSyncingResults(true);
     try {
-      const response = await api<{ ok: boolean; sync: ResultSyncSummary }>('/admin/sync-results', { method: 'POST' });
-      setLastSync(response.sync);
+      const response = await api<{ summary: ResultSyncSummary }>('/admin/sync-results', { method: 'POST' });
       await load();
       setMessage(
-        `Sincronización finalizada: ${response.sync.updated_count} actualizados, ${response.sync.skipped_count} omitidos, ${response.sync.unmatched_count} sin coincidencia.`
+        `Sincronización finalizada. Leídos: ${response.summary.fetched_count}. Finalizados: ${response.summary.finished_count}. Actualizados: ${response.summary.updated_count}. Saltados: ${response.summary.skipped_count}. No encontrados: ${response.summary.unmatched_count}.`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron sincronizar resultados.');
+      setError(err instanceof Error ? err.message : 'No se pudo sincronizar resultados.');
     } finally {
       setSyncingResults(false);
     }
@@ -147,6 +146,13 @@ export function Admin() {
         <button onClick={recalculate} className="rounded-2xl bg-emerald-400 px-4 py-3 font-black text-slate-950 hover:bg-emerald-300">
           Recalcular puntos
         </button>
+        <button
+          onClick={syncResults}
+          disabled={syncingResults}
+          className="rounded-2xl bg-sky-400 px-4 py-3 font-black text-slate-950 hover:bg-sky-300 disabled:cursor-wait disabled:bg-slate-600 disabled:text-slate-300"
+        >
+          {syncingResults ? 'Sincronizando...' : 'Sincronizar resultados'}
+        </button>
         <button onClick={() => toggleLock(true)} className="rounded-2xl bg-amber-400 px-4 py-3 font-black text-slate-950 hover:bg-amber-300">
           Bloquear carga
         </button>
@@ -159,80 +165,15 @@ export function Admin() {
         <button onClick={() => toggleSpecialLock(false)} className="rounded-2xl border border-white/10 px-4 py-3 font-black hover:bg-white/10">
           Desbloquear especiales
         </button>
-        <button
-          onClick={syncResults}
-          disabled={syncingResults}
-          className="rounded-2xl bg-sky-400 px-4 py-3 font-black text-slate-950 hover:bg-sky-300 disabled:cursor-wait disabled:bg-slate-600 disabled:text-slate-300"
-        >
-          {syncingResults ? 'Sincronizando...' : 'Sincronizar resultados'}
-        </button>
       </section>
 
-      {lastSync && <ResultSyncSummaryCard sync={lastSync} />}
-
+      <SyncLogsAdmin logs={syncLogs} />
       <ResultsAdmin matches={matches} onSaved={load} onMessage={setMessage} onError={setError} />
       <FixtureAdmin matches={matches} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />
       {tournamentResults && <TournamentResultsAdmin results={tournamentResults} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />}
       {rules && <RulesForm rules={rules} onSaved={load} onMessage={setMessage} onError={setError} />}
       <UsersAdmin users={users} onSaved={load} onMessage={setMessage} onError={setError} />
       <AuditLogsAdmin logs={auditLogs} />
-    </div>
-  );
-}
-
-function ResultSyncSummaryCard({ sync }: { sync: ResultSyncSummary }) {
-  return (
-    <section className="rounded-3xl border border-sky-300/30 bg-sky-400/10 p-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h2 className="text-2xl font-black text-sky-200">Sincronización de resultados</h2>
-          <p className="mt-1 text-sm text-slate-300">
-            Fuente: football-data.org · Competencia {sync.competition_code} · Temporada {sync.season}
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-center text-sm sm:grid-cols-5">
-          <SyncMetric label="Leídos" value={sync.fetched_count} />
-          <SyncMetric label="Finalizados" value={sync.finished_count} />
-          <SyncMetric label="Actualizados" value={sync.updated_count} />
-          <SyncMetric label="Omitidos" value={sync.skipped_count} />
-          <SyncMetric label="Sin match" value={sync.unmatched_count} />
-        </div>
-      </div>
-
-      {sync.updated_matches.length > 0 && (
-        <div className="mt-4 rounded-2xl bg-slate-950/40 p-4">
-          <div className="text-sm font-black text-emerald-300">Partidos actualizados</div>
-          <div className="mt-2 grid gap-2 text-sm text-slate-200">
-            {sync.updated_matches.map((match) => (
-              <div key={`${match.match_order}-${match.home_team}-${match.away_team}`}>
-                #{match.match_order} · {match.home_team} {match.home_score} - {match.away_score} {match.away_team}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {sync.unmatched_matches.length > 0 && (
-        <div className="mt-4 rounded-2xl bg-amber-400/10 p-4">
-          <div className="text-sm font-black text-amber-200">Partidos finalizados sin coincidencia local</div>
-          <div className="mt-2 grid gap-2 text-sm text-slate-200">
-            {sync.unmatched_matches.slice(0, 10).map((match) => (
-              <div key={match.external_match_id}>
-                ID externo {match.external_match_id} · {match.home_team || 'Local'} {match.home_score} - {match.away_score} {match.away_team || 'Visitante'}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function SyncMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl bg-slate-950/40 px-3 py-2">
-      <div className="text-xl font-black text-white">{value}</div>
-      <div className="text-xs text-slate-400">{label}</div>
     </div>
   );
 }
@@ -779,20 +720,9 @@ function TeamMiniLabel({ name, flagCode }: { name: string; flagCode: string | nu
   );
 }
 
-function toDateTimeLocal(value: string | null | undefined) {
-  if (!value) return '';
-
-  const rawValue = value.trim();
-  if (!rawValue) return '';
-
-  const sqliteDateTime = rawValue.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::\d{2})?$/);
-  if (sqliteDateTime) {
-    return `${sqliteDateTime[1]}T${sqliteDateTime[2]}:${sqliteDateTime[3]}`;
-  }
-
-  const date = new Date(rawValue);
+function toDateTimeLocal(value: string) {
+  const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-
   const pad = (number: number) => String(number).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -1068,6 +998,104 @@ function UsersAdmin({
 }
 
 
+
+function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-2xl font-black text-emerald-300">Sincronización de resultados</h2>
+        <p className="mt-1 text-sm text-slate-300">
+          Historial de sincronizaciones automáticas y manuales contra football-data.org. Si un resultado ya estaba cargado o bloqueado manualmente, se marca como saltado.
+        </p>
+      </div>
+
+      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/10">
+        <div className="hidden overflow-x-auto lg:block">
+          <table className="min-w-full text-sm">
+            <thead className="bg-white/10 text-left text-slate-300">
+              <tr>
+                <th className="px-4 py-3">Fecha</th>
+                <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3 text-right">Leídos</th>
+                <th className="px-4 py-3 text-right">Finalizados</th>
+                <th className="px-4 py-3 text-right">Actualizados</th>
+                <th className="px-4 py-3 text-right">Saltados</th>
+                <th className="px-4 py-3 text-right">No encontrados</th>
+                <th className="px-4 py-3">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-4 text-slate-400" colSpan={8}>
+                    Todavía no hay sincronizaciones registradas.
+                  </td>
+                </tr>
+              ) : (
+                logs.map((log) => (
+                  <tr key={log.id} className="border-t border-white/10 align-top">
+                    <td className="px-4 py-3 text-slate-300">{formatDateTime(log.created_at)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-3 py-1 text-xs font-black ${log.status === 'SUCCESS' ? 'bg-emerald-400 text-slate-950' : 'bg-red-400 text-white'}`}>
+                        {log.status === 'SUCCESS' ? 'OK' : 'Error'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold">{log.fetched_count}</td>
+                    <td className="px-4 py-3 text-right font-bold">{log.finished_count}</td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-300">{log.updated_count}</td>
+                    <td className="px-4 py-3 text-right font-bold">{log.skipped_count}</td>
+                    <td className="px-4 py-3 text-right font-bold">{log.unmatched_count}</td>
+                    <td className="max-w-[280px] px-4 py-3 text-slate-300">{log.error_message || '—'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="grid gap-3 p-3 lg:hidden">
+          {logs.length === 0 ? (
+            <div className="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">Todavía no hay sincronizaciones registradas.</div>
+          ) : (
+            logs.map((log) => (
+              <article key={log.id} className="rounded-2xl bg-slate-900 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-bold text-white">{formatDateTime(log.created_at)}</div>
+                    <div className="mt-1 text-xs text-slate-400">{log.provider} · {log.competition_code} {log.season}</div>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-black ${log.status === 'SUCCESS' ? 'bg-emerald-400 text-slate-950' : 'bg-red-400 text-white'}`}>
+                    {log.status === 'SUCCESS' ? 'OK' : 'Error'}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2 text-center text-sm">
+                  <SmallSyncStat label="Leídos" value={log.fetched_count} />
+                  <SmallSyncStat label="Finalizados" value={log.finished_count} />
+                  <SmallSyncStat label="Actualizados" value={log.updated_count} />
+                  <SmallSyncStat label="Saltados" value={log.skipped_count} />
+                  <SmallSyncStat label="No encontrados" value={log.unmatched_count} />
+                </div>
+
+                {log.error_message && <div className="mt-3 rounded-xl bg-red-400/10 p-3 text-sm text-red-200">{log.error_message}</div>}
+              </article>
+            ))
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SmallSyncStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-white/5 px-2 py-3">
+      <div className="font-black text-white">{value}</div>
+      <div className="text-xs text-slate-400">{label}</div>
+    </div>
+  );
+}
+
 function AuditLogsAdmin({ logs }: { logs: AdminAuditLog[] }) {
   return (
     <section className="space-y-4">
@@ -1130,12 +1158,12 @@ function labelForAuditAction(action: string) {
     RESET_USER_PASSWORD: 'Reseteo de clave',
     UPDATE_FIXTURE: 'Fixture editado',
     SAVE_MATCH_RESULT: 'Resultado cargado',
-    SYNC_MATCH_RESULTS: 'Resultados sincronizados',
     UPDATE_TOURNAMENT_RESULTS: 'Finales del torneo',
     LOCK_SPECIAL_PREDICTIONS: 'Especiales bloqueadas',
     UNLOCK_SPECIAL_PREDICTIONS: 'Especiales desbloqueadas',
     UPDATE_SCORING_RULES: 'Reglas actualizadas',
     RECALCULATE_POINTS: 'Puntos recalculados',
+    SYNC_RESULTS: 'Resultados sincronizados',
     LOCK_PREDICTIONS: 'Carga bloqueada',
     UNLOCK_PREDICTIONS: 'Carga desbloqueada'
   };
