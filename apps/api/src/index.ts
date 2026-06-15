@@ -856,13 +856,19 @@ app.post('/admin/sync-results', requireAdmin, async (c) => {
 app.get('/admin/sync-results/logs', requireAdmin, async (c) => {
   const rawPage = Number(c.req.query('page') || 1);
   const rawPageSize = Number(c.req.query('pageSize') || 10);
+  const includeNoChanges = c.req.query('includeNoChanges') === 'true';
   const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const pageSize = Number.isInteger(rawPageSize) && rawPageSize > 0 ? Math.min(rawPageSize, 50) : 10;
-  const offset = (page - 1) * pageSize;
+  const onlyRelevantWhere = includeNoChanges
+    ? ''
+    : `WHERE status <> 'SUCCESS'
+       OR updated_count > 0
+       OR unmatched_count > 0`;
 
   const totalRow = await c.env.DB.prepare(`
     SELECT COUNT(*) AS total
     FROM result_sync_logs
+    ${onlyRelevantWhere}
   `).first<CountRow>();
   const total = Number(totalRow?.total || 0);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -885,6 +891,7 @@ app.get('/admin/sync-results/logs', requireAdmin, async (c) => {
       error_message,
       created_at
     FROM result_sync_logs
+    ${onlyRelevantWhere}
     ORDER BY id DESC
     LIMIT ? OFFSET ?
   `).bind(pageSize, safeOffset).all<ResultSyncLog>();

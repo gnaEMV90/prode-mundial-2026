@@ -18,9 +18,21 @@ export function Admin() {
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [syncLogs, setSyncLogs] = useState<ResultSyncLog[]>([]);
   const [syncLogsPagination, setSyncLogsPagination] = useState<Pagination>({ page: 1, page_size: SYNC_LOGS_PAGE_SIZE, total: 0, total_pages: 1 });
+  const [includeNoChangeSyncLogs, setIncludeNoChangeSyncLogs] = useState(false);
   const [syncingResults, setSyncingResults] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  function syncLogsPath(page: number, includeNoChanges = includeNoChangeSyncLogs) {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(SYNC_LOGS_PAGE_SIZE)
+    });
+
+    if (includeNoChanges) params.set('includeNoChanges', 'true');
+
+    return `/admin/sync-results/logs?${params.toString()}`;
+  }
 
   async function load() {
     const [matchesResponse, usersResponse, teamsResponse, rulesResponse, tournamentResultsResponse, auditLogsResponse, syncLogsResponse] = await Promise.all([
@@ -30,7 +42,7 @@ export function Admin() {
       api<{ rules: ScoringRules }>('/admin/scoring-rules'),
       api<{ results: TournamentResults }>('/admin/tournament-results'),
       api<{ logs: AdminAuditLog[] }>('/admin/audit-logs'),
-      api<ResultSyncLogsResponse>(`/admin/sync-results/logs?page=1&pageSize=${SYNC_LOGS_PAGE_SIZE}`)
+      api<ResultSyncLogsResponse>(syncLogsPath(1))
     ]);
     setMatches(matchesResponse.matches);
     setUsers(usersResponse.users);
@@ -43,11 +55,16 @@ export function Admin() {
   }
 
 
-  async function loadSyncLogs(page: number) {
+  async function loadSyncLogs(page: number, includeNoChanges = includeNoChangeSyncLogs) {
     setError('');
-    const response = await api<ResultSyncLogsResponse>(`/admin/sync-results/logs?page=${page}&pageSize=${SYNC_LOGS_PAGE_SIZE}`);
+    const response = await api<ResultSyncLogsResponse>(syncLogsPath(page, includeNoChanges));
     setSyncLogs(response.logs);
     setSyncLogsPagination(response.pagination);
+  }
+
+  async function toggleNoChangeSyncLogs(nextValue: boolean) {
+    setIncludeNoChangeSyncLogs(nextValue);
+    await loadSyncLogs(1, nextValue);
   }
 
   useEffect(() => {
@@ -181,7 +198,13 @@ export function Admin() {
         </button>
       </section>
 
-      <SyncLogsAdmin logs={syncLogs} pagination={syncLogsPagination} onPageChange={loadSyncLogs} />
+      <SyncLogsAdmin
+        logs={syncLogs}
+        pagination={syncLogsPagination}
+        includeNoChanges={includeNoChangeSyncLogs}
+        onIncludeNoChangesChange={toggleNoChangeSyncLogs}
+        onPageChange={loadSyncLogs}
+      />
       <ResultsAdmin matches={matches} onSaved={load} onMessage={setMessage} onError={setError} />
       <FixtureAdmin matches={matches} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />
       {tournamentResults && <TournamentResultsAdmin results={tournamentResults} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />}
@@ -1151,14 +1174,38 @@ function UsersAdmin({
 
 
 
-function SyncLogsAdmin({ logs, pagination, onPageChange }: { logs: ResultSyncLog[]; pagination: Pagination; onPageChange: (page: number) => void }) {
+function SyncLogsAdmin({
+  logs,
+  pagination,
+  includeNoChanges,
+  onIncludeNoChangesChange,
+  onPageChange
+}: {
+  logs: ResultSyncLog[];
+  pagination: Pagination;
+  includeNoChanges: boolean;
+  onIncludeNoChangesChange: (value: boolean) => void;
+  onPageChange: (page: number) => void;
+}) {
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-black text-emerald-300">Sincronización de resultados</h2>
-        <p className="mt-1 text-sm text-slate-300">
-          Historial de sincronizaciones automáticas y manuales contra football-data.org. También muestra qué partidos se actualizaron o quedaron sin matchear.
-        </p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-emerald-300">Sincronización de resultados</h2>
+          <p className="mt-1 text-sm text-slate-300">
+            Por defecto se muestran solo sincronizaciones con cambios, partidos sin matchear o errores. Las sincronizaciones sin novedades quedan ocultas para no llenar la tabla de ruido.
+          </p>
+        </div>
+
+        <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-bold text-slate-200">
+          <input
+            type="checkbox"
+            checked={includeNoChanges}
+            onChange={(event) => onIncludeNoChangesChange(event.target.checked)}
+            className="h-4 w-4 accent-emerald-300"
+          />
+          Mostrar también sincronizaciones sin cambios
+        </label>
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/10">
@@ -1181,7 +1228,7 @@ function SyncLogsAdmin({ logs, pagination, onPageChange }: { logs: ResultSyncLog
               {logs.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-slate-400" colSpan={9}>
-                    Todavía no hay sincronizaciones registradas.
+                    No hay sincronizaciones con cambios para mostrar.
                   </td>
                 </tr>
               ) : (
@@ -1209,7 +1256,7 @@ function SyncLogsAdmin({ logs, pagination, onPageChange }: { logs: ResultSyncLog
 
         <div className="grid gap-3 p-3 xl:hidden">
           {logs.length === 0 ? (
-            <div className="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">Todavía no hay sincronizaciones registradas.</div>
+            <div className="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">No hay sincronizaciones con cambios para mostrar.</div>
           ) : (
             logs.map((log) => (
               <article key={log.id} className="rounded-2xl bg-slate-900 p-4">
@@ -1257,7 +1304,7 @@ function SyncLogsPagination({ pagination, onPageChange }: { pagination: Paginati
     <div className="flex flex-col gap-3 border-t border-white/10 bg-slate-950/30 px-4 py-4 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
       <div>
         Mostrando <span className="font-bold text-white">{firstItem}-{lastItem}</span> de{' '}
-        <span className="font-bold text-white">{pagination.total}</span> sincronizaciones.
+        <span className="font-bold text-white">{pagination.total}</span> sincronizaciones mostradas.
       </div>
 
       <div className="flex items-center gap-2">
