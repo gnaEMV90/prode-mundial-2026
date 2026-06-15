@@ -52,6 +52,11 @@ export type Match = {
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED';
   venue: string | null;
   match_order: number;
+  external_provider: string | null;
+  external_match_id: string | null;
+  last_synced_at: string | null;
+  result_source: 'MANUAL' | 'FOOTBALL_DATA';
+  manually_locked: number;
   home_team_name: string | null;
   away_team_name: string | null;
   home_team_code: string | null;
@@ -157,4 +162,31 @@ export type AdminAuditLog = {
   created_at: string;
   admin_name: string | null;
   admin_email: string | null;
+};
+
+
+export type ResultSyncSummary = {
+  provider: 'FOOTBALL_DATA';
+  competition_code: string;
+  season: number;
+  fetched_count: number;
+  finished_count: number;
+  updated_count: number;
+  skipped_count: number;
+  unmatched_count: number;
+  updated_matches: Array<{
+    match_order: number;
+    home_team: string;
+    away_team: string;
+    home_score: number;
+    away_score: number;
+  }>;
+  unmatched_matches: Array<{
+    external_match_id: number;
+    home_team: string | null;
+    away_team: string | null;
+    utc_date: string;
+    home_score: number;
+    away_score: number;
+  }>;
 };

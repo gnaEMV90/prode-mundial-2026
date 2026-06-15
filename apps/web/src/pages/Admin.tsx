@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { api, AdminAuditLog, Match, ScoringRules, Team, TournamentResults, User } from '../lib/api';
+import { api, AdminAuditLog, Match, ResultSyncSummary, ScoringRules, Team, TournamentResults, User } from '../lib/api';
 import { Message } from '../components/Message';
 import { FlagIcon } from '../components/FlagIcon';
 
@@ -12,6 +12,8 @@ export function Admin() {
   const [rules, setRules] = useState<ScoringRules | null>(null);
   const [tournamentResults, setTournamentResults] = useState<TournamentResults | null>(null);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+  const [lastSync, setLastSync] = useState<ResultSyncSummary | null>(null);
+  const [syncingResults, setSyncingResults] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -48,6 +50,29 @@ export function Admin() {
       setMessage('Puntajes recalculados.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo recalcular.');
+    }
+  }
+
+
+  async function syncResults() {
+    setError('');
+    setMessage('');
+    setLastSync(null);
+
+    if (!window.confirm('Vas a consultar football-data.org y actualizar resultados finalizados no bloqueados manualmente. ¿Continuar?')) return;
+
+    setSyncingResults(true);
+    try {
+      const response = await api<{ ok: boolean; sync: ResultSyncSummary }>('/admin/sync-results', { method: 'POST' });
+      setLastSync(response.sync);
+      await load();
+      setMessage(
+        `Sincronización finalizada: ${response.sync.updated_count} actualizados, ${response.sync.skipped_count} omitidos, ${response.sync.unmatched_count} sin coincidencia.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron sincronizar resultados.');
+    } finally {
+      setSyncingResults(false);
     }
   }
 
@@ -118,7 +143,7 @@ export function Admin() {
         ))}
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <button onClick={recalculate} className="rounded-2xl bg-emerald-400 px-4 py-3 font-black text-slate-950 hover:bg-emerald-300">
           Recalcular puntos
         </button>
@@ -134,7 +159,16 @@ export function Admin() {
         <button onClick={() => toggleSpecialLock(false)} className="rounded-2xl border border-white/10 px-4 py-3 font-black hover:bg-white/10">
           Desbloquear especiales
         </button>
+        <button
+          onClick={syncResults}
+          disabled={syncingResults}
+          className="rounded-2xl bg-sky-400 px-4 py-3 font-black text-slate-950 hover:bg-sky-300 disabled:cursor-wait disabled:bg-slate-600 disabled:text-slate-300"
+        >
+          {syncingResults ? 'Sincronizando...' : 'Sincronizar resultados'}
+        </button>
       </section>
+
+      {lastSync && <ResultSyncSummaryCard sync={lastSync} />}
 
       <ResultsAdmin matches={matches} onSaved={load} onMessage={setMessage} onError={setError} />
       <FixtureAdmin matches={matches} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />
@@ -142,6 +176,63 @@ export function Admin() {
       {rules && <RulesForm rules={rules} onSaved={load} onMessage={setMessage} onError={setError} />}
       <UsersAdmin users={users} onSaved={load} onMessage={setMessage} onError={setError} />
       <AuditLogsAdmin logs={auditLogs} />
+    </div>
+  );
+}
+
+function ResultSyncSummaryCard({ sync }: { sync: ResultSyncSummary }) {
+  return (
+    <section className="rounded-3xl border border-sky-300/30 bg-sky-400/10 p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-sky-200">Sincronización de resultados</h2>
+          <p className="mt-1 text-sm text-slate-300">
+            Fuente: football-data.org · Competencia {sync.competition_code} · Temporada {sync.season}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-center text-sm sm:grid-cols-5">
+          <SyncMetric label="Leídos" value={sync.fetched_count} />
+          <SyncMetric label="Finalizados" value={sync.finished_count} />
+          <SyncMetric label="Actualizados" value={sync.updated_count} />
+          <SyncMetric label="Omitidos" value={sync.skipped_count} />
+          <SyncMetric label="Sin match" value={sync.unmatched_count} />
+        </div>
+      </div>
+
+      {sync.updated_matches.length > 0 && (
+        <div className="mt-4 rounded-2xl bg-slate-950/40 p-4">
+          <div className="text-sm font-black text-emerald-300">Partidos actualizados</div>
+          <div className="mt-2 grid gap-2 text-sm text-slate-200">
+            {sync.updated_matches.map((match) => (
+              <div key={`${match.match_order}-${match.home_team}-${match.away_team}`}>
+                #{match.match_order} · {match.home_team} {match.home_score} - {match.away_score} {match.away_team}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sync.unmatched_matches.length > 0 && (
+        <div className="mt-4 rounded-2xl bg-amber-400/10 p-4">
+          <div className="text-sm font-black text-amber-200">Partidos finalizados sin coincidencia local</div>
+          <div className="mt-2 grid gap-2 text-sm text-slate-200">
+            {sync.unmatched_matches.slice(0, 10).map((match) => (
+              <div key={match.external_match_id}>
+                ID externo {match.external_match_id} · {match.home_team || 'Local'} {match.home_score} - {match.away_score} {match.away_team || 'Visitante'}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SyncMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl bg-slate-950/40 px-3 py-2">
+      <div className="text-xl font-black text-white">{value}</div>
+      <div className="text-xs text-slate-400">{label}</div>
     </div>
   );
 }
@@ -688,9 +779,20 @@ function TeamMiniLabel({ name, flagCode }: { name: string; flagCode: string | nu
   );
 }
 
-function toDateTimeLocal(value: string) {
-  const date = new Date(value);
+function toDateTimeLocal(value: string | null | undefined) {
+  if (!value) return '';
+
+  const rawValue = value.trim();
+  if (!rawValue) return '';
+
+  const sqliteDateTime = rawValue.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::\d{2})?$/);
+  if (sqliteDateTime) {
+    return `${sqliteDateTime[1]}T${sqliteDateTime[2]}:${sqliteDateTime[3]}`;
+  }
+
+  const date = new Date(rawValue);
   if (Number.isNaN(date.getTime())) return '';
+
   const pad = (number: number) => String(number).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -1028,6 +1130,7 @@ function labelForAuditAction(action: string) {
     RESET_USER_PASSWORD: 'Reseteo de clave',
     UPDATE_FIXTURE: 'Fixture editado',
     SAVE_MATCH_RESULT: 'Resultado cargado',
+    SYNC_MATCH_RESULTS: 'Resultados sincronizados',
     UPDATE_TOURNAMENT_RESULTS: 'Finales del torneo',
     LOCK_SPECIAL_PREDICTIONS: 'Especiales bloqueadas',
     UNLOCK_SPECIAL_PREDICTIONS: 'Especiales desbloqueadas',
