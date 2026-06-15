@@ -214,6 +214,18 @@ export type ResultSyncLog = {
   created_at: string;
 };
 
+export type Pagination = {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+};
+
+export type ResultSyncLogsResponse = {
+  logs: ResultSyncLog[];
+  pagination: Pagination;
+};
+
 export type MatchResultLockResponse = {
   ok: boolean;
   manually_locked: number;

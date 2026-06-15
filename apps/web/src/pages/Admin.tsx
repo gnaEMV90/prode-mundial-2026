@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { api, AdminAuditLog, Match, ResultSyncLog, ResultSyncSummary, ScoringRules, Team, TournamentResults, User } from '../lib/api';
+import { api, AdminAuditLog, Match, Pagination, ResultSyncLog, ResultSyncLogsResponse, ResultSyncSummary, ScoringRules, Team, TournamentResults, User } from '../lib/api';
 import { Message } from '../components/Message';
 import { FlagIcon } from '../components/FlagIcon';
 
 type StatusFilter = 'ALL' | Match['status'];
 type SourceFilter = 'ALL' | 'MANUAL' | 'FOOTBALL_DATA';
 type LockFilter = 'ALL' | 'LOCKED' | 'UNLOCKED';
+
+const SYNC_LOGS_PAGE_SIZE = 10;
 
 export function Admin() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -15,6 +17,7 @@ export function Admin() {
   const [tournamentResults, setTournamentResults] = useState<TournamentResults | null>(null);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [syncLogs, setSyncLogs] = useState<ResultSyncLog[]>([]);
+  const [syncLogsPagination, setSyncLogsPagination] = useState<Pagination>({ page: 1, page_size: SYNC_LOGS_PAGE_SIZE, total: 0, total_pages: 1 });
   const [syncingResults, setSyncingResults] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -27,7 +30,7 @@ export function Admin() {
       api<{ rules: ScoringRules }>('/admin/scoring-rules'),
       api<{ results: TournamentResults }>('/admin/tournament-results'),
       api<{ logs: AdminAuditLog[] }>('/admin/audit-logs'),
-      api<{ logs: ResultSyncLog[] }>('/admin/sync-results/logs')
+      api<ResultSyncLogsResponse>(`/admin/sync-results/logs?page=1&pageSize=${SYNC_LOGS_PAGE_SIZE}`)
     ]);
     setMatches(matchesResponse.matches);
     setUsers(usersResponse.users);
@@ -36,6 +39,15 @@ export function Admin() {
     setTournamentResults(tournamentResultsResponse.results);
     setAuditLogs(auditLogsResponse.logs);
     setSyncLogs(syncLogsResponse.logs);
+    setSyncLogsPagination(syncLogsResponse.pagination);
+  }
+
+
+  async function loadSyncLogs(page: number) {
+    setError('');
+    const response = await api<ResultSyncLogsResponse>(`/admin/sync-results/logs?page=${page}&pageSize=${SYNC_LOGS_PAGE_SIZE}`);
+    setSyncLogs(response.logs);
+    setSyncLogsPagination(response.pagination);
   }
 
   useEffect(() => {
@@ -169,7 +181,7 @@ export function Admin() {
         </button>
       </section>
 
-      <SyncLogsAdmin logs={syncLogs} />
+      <SyncLogsAdmin logs={syncLogs} pagination={syncLogsPagination} onPageChange={loadSyncLogs} />
       <ResultsAdmin matches={matches} onSaved={load} onMessage={setMessage} onError={setError} />
       <FixtureAdmin matches={matches} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />
       {tournamentResults && <TournamentResultsAdmin results={tournamentResults} teams={teams} onSaved={load} onMessage={setMessage} onError={setError} />}
@@ -1139,7 +1151,7 @@ function UsersAdmin({
 
 
 
-function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
+function SyncLogsAdmin({ logs, pagination, onPageChange }: { logs: ResultSyncLog[]; pagination: Pagination; onPageChange: (page: number) => void }) {
   return (
     <section className="space-y-4">
       <div>
@@ -1228,8 +1240,48 @@ function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
             ))
           )}
         </div>
+
+        <SyncLogsPagination pagination={pagination} onPageChange={onPageChange} />
       </div>
     </section>
+  );
+}
+
+function SyncLogsPagination({ pagination, onPageChange }: { pagination: Pagination; onPageChange: (page: number) => void }) {
+  const firstItem = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.page_size + 1;
+  const lastItem = Math.min(pagination.page * pagination.page_size, pagination.total);
+  const canGoBack = pagination.page > 1;
+  const canGoNext = pagination.page < pagination.total_pages;
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-white/10 bg-slate-950/30 px-4 py-4 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        Mostrando <span className="font-bold text-white">{firstItem}-{lastItem}</span> de{' '}
+        <span className="font-bold text-white">{pagination.total}</span> sincronizaciones.
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={!canGoBack}
+          onClick={() => onPageChange(pagination.page - 1)}
+          className="rounded-xl border border-white/10 px-4 py-2 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Anterior
+        </button>
+        <span className="rounded-xl bg-white/10 px-4 py-2 font-bold text-white">
+          {pagination.page} / {pagination.total_pages}
+        </span>
+        <button
+          type="button"
+          disabled={!canGoNext}
+          onClick={() => onPageChange(pagination.page + 1)}
+          className="rounded-xl border border-white/10 px-4 py-2 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Siguiente
+        </button>
+      </div>
+    </div>
   );
 }
 

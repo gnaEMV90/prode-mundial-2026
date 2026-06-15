@@ -144,6 +144,10 @@ type ResultSyncLog = {
   created_at: string;
 };
 
+type CountRow = {
+  total: number;
+};
+
 const app = new Hono<{ Bindings: Env; Variables: { user: User | null } }>();
 
 const COOKIE_NAME = 'pm_session';
@@ -850,6 +854,21 @@ app.post('/admin/sync-results', requireAdmin, async (c) => {
 });
 
 app.get('/admin/sync-results/logs', requireAdmin, async (c) => {
+  const rawPage = Number(c.req.query('page') || 1);
+  const rawPageSize = Number(c.req.query('pageSize') || 10);
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const pageSize = Number.isInteger(rawPageSize) && rawPageSize > 0 ? Math.min(rawPageSize, 50) : 10;
+  const offset = (page - 1) * pageSize;
+
+  const totalRow = await c.env.DB.prepare(`
+    SELECT COUNT(*) AS total
+    FROM result_sync_logs
+  `).first<CountRow>();
+  const total = Number(totalRow?.total || 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const safeOffset = (safePage - 1) * pageSize;
+
   const logs = await c.env.DB.prepare(`
     SELECT
       id,
@@ -867,10 +886,18 @@ app.get('/admin/sync-results/logs', requireAdmin, async (c) => {
       created_at
     FROM result_sync_logs
     ORDER BY id DESC
-    LIMIT 20
-  `).all<ResultSyncLog>();
+    LIMIT ? OFFSET ?
+  `).bind(pageSize, safeOffset).all<ResultSyncLog>();
 
-  return c.json({ logs: logs.results });
+  return c.json({
+    logs: logs.results,
+    pagination: {
+      page: safePage,
+      page_size: pageSize,
+      total,
+      total_pages: totalPages
+    }
+  });
 });
 
 app.post('/admin/settings/predictions-lock', requireAdmin, async (c) => {
