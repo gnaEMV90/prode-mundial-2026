@@ -4,6 +4,8 @@ import { Message } from '../components/Message';
 import { FlagIcon } from '../components/FlagIcon';
 
 type StatusFilter = 'ALL' | Match['status'];
+type SourceFilter = 'ALL' | 'MANUAL' | 'FOOTBALL_DATA';
+type LockFilter = 'ALL' | 'LOCKED' | 'UNLOCKED';
 
 export function Admin() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -190,6 +192,8 @@ function ResultsAdmin({
   onError: (value: string) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
+  const [lockFilter, setLockFilter] = useState<LockFilter>('ALL');
   const [groupFilter, setGroupFilter] = useState('ALL');
   const [query, setQuery] = useState('');
 
@@ -203,6 +207,8 @@ function ResultsAdmin({
 
     return matches.filter((match) => {
       const matchesStatus = statusFilter === 'ALL' || match.status === statusFilter;
+      const matchesSource = sourceFilter === 'ALL' || match.result_source === sourceFilter;
+      const matchesLock = lockFilter === 'ALL' || (lockFilter === 'LOCKED' ? match.manually_locked === 1 : match.manually_locked !== 1);
       const matchesGroup = groupFilter === 'ALL' || match.group_name === groupFilter;
       const text = [
         match.stage,
@@ -211,19 +217,25 @@ function ResultsAdmin({
         match.home_team_name,
         match.away_team_name,
         match.home_team_code,
-        match.away_team_code
+        match.away_team_code,
+        match.result_source,
+        match.external_provider,
+        match.external_match_id,
+        match.match_order
       ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
       const matchesQuery = !normalizedQuery || text.includes(normalizedQuery);
 
-      return matchesStatus && matchesGroup && matchesQuery;
+      return matchesStatus && matchesSource && matchesLock && matchesGroup && matchesQuery;
     });
-  }, [matches, statusFilter, groupFilter, query]);
+  }, [matches, statusFilter, sourceFilter, lockFilter, groupFilter, query]);
 
   function clearFilters() {
     setStatusFilter('ALL');
+    setSourceFilter('ALL');
+    setLockFilter('ALL');
     setGroupFilter('ALL');
     setQuery('');
   }
@@ -232,14 +244,16 @@ function ResultsAdmin({
     <section className="space-y-4">
       <div>
         <h2 className="text-2xl font-black text-emerald-300">Resultados</h2>
-        <p className="mt-1 text-sm text-slate-300">Guardá el resultado final de cada partido. Al guardar, el ranking se actualiza solo.</p>
+        <p className="mt-1 text-sm text-slate-300">
+          Guardá resultados, revisá si fueron manuales o sincronizados, y bloqueá partidos para que la sincronización automática no los pise.
+        </p>
       </div>
 
-      <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/10 p-4 lg:grid-cols-[1fr_180px_180px_auto]">
+      <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/10 p-4 lg:grid-cols-[1fr_180px_180px_180px_180px_auto]">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar selección, estadio o etapa"
+          placeholder="Buscar selección, estadio, etapa, fuente o número"
           className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-emerald-300"
         />
 
@@ -267,13 +281,36 @@ function ResultsAdmin({
           <option value="FINISHED">Finalizados</option>
         </select>
 
+        <select
+          value={sourceFilter}
+          onChange={(event) => setSourceFilter(event.target.value as SourceFilter)}
+          className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-emerald-300"
+        >
+          <option value="ALL">Todas las fuentes</option>
+          <option value="MANUAL">Manual</option>
+          <option value="FOOTBALL_DATA">Football-data</option>
+        </select>
+
+        <select
+          value={lockFilter}
+          onChange={(event) => setLockFilter(event.target.value as LockFilter)}
+          className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-emerald-300"
+        >
+          <option value="ALL">Todos los bloqueos</option>
+          <option value="LOCKED">Protegidos</option>
+          <option value="UNLOCKED">Sin protección</option>
+        </select>
+
         <button onClick={clearFilters} className="rounded-2xl border border-white/10 px-4 py-3 font-black hover:bg-white/10">
           Limpiar
         </button>
       </div>
 
-      <div className="text-sm text-slate-300">
-        Mostrando <strong className="text-white">{filteredMatches.length}</strong> de <strong className="text-white">{matches.length}</strong> partidos.
+      <div className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
+        <ResultMetric label="Mostrados" value={`${filteredMatches.length}/${matches.length}`} />
+        <ResultMetric label="Manuales" value={matches.filter((match) => match.result_source === 'MANUAL').length} />
+        <ResultMetric label="Sincronizados" value={matches.filter((match) => match.result_source === 'FOOTBALL_DATA').length} />
+        <ResultMetric label="Protegidos" value={matches.filter((match) => match.manually_locked === 1).length} />
       </div>
 
       <div className="grid gap-3">
@@ -282,6 +319,15 @@ function ResultsAdmin({
         ))}
       </div>
     </section>
+  );
+}
+
+function ResultMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+      <div className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="mt-1 text-xl font-black text-white">{value}</div>
+    </div>
   );
 }
 
@@ -299,9 +345,11 @@ function ResultRow({
   const [homeScore, setHomeScore] = useState(match.home_score !== null ? String(match.home_score) : '');
   const [awayScore, setAwayScore] = useState(match.away_score !== null ? String(match.away_score) : '');
   const [saving, setSaving] = useState(false);
+  const [changingLock, setChangingLock] = useState(false);
   const home = match.home_team_name || 'Equipo por definir';
   const away = match.away_team_name || 'Equipo por definir';
-  const date = new Date(match.starts_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+  const date = formatDateTime(match.starts_at);
+  const isLocked = match.manually_locked === 1;
 
   useEffect(() => {
     setHomeScore(match.home_score !== null ? String(match.home_score) : '');
@@ -321,7 +369,7 @@ function ResultRow({
       return;
     }
 
-    if (!window.confirm(`Vas a guardar el resultado ${home} ${homeNumber} - ${awayNumber} ${away} y recalcular el ranking. ¿Continuar?`)) {
+    if (!window.confirm(`Vas a guardar el resultado ${home} ${homeNumber} - ${awayNumber} ${away} y recalcular el ranking. También quedará protegido contra sincronización automática. ¿Continuar?`)) {
       return;
     }
 
@@ -332,11 +380,36 @@ function ResultRow({
         body: { home_score: homeNumber, away_score: awayNumber, status: 'FINISHED' }
       });
       await onSaved();
-      onMessage(`Resultado guardado: ${home} ${homeNumber} - ${awayNumber} ${away}. Ranking actualizado.`);
+      onMessage(`Resultado guardado manualmente: ${home} ${homeNumber} - ${awayNumber} ${away}. Ranking actualizado y partido protegido.`);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'No se pudo guardar el resultado.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function setResultLock(nextLocked: boolean) {
+    onMessage('');
+    onError('');
+
+    const text = nextLocked
+      ? `Vas a proteger el resultado de ${home} vs ${away}. La sincronización automática no lo va a pisar. ¿Continuar?`
+      : `Vas a permitir que la sincronización automática pueda actualizar ${home} vs ${away}. ¿Continuar?`;
+
+    if (!window.confirm(text)) return;
+
+    setChangingLock(true);
+    try {
+      await api(`/admin/matches/${match.id}/result-lock`, {
+        method: 'POST',
+        body: { manually_locked: nextLocked }
+      });
+      await onSaved();
+      onMessage(nextLocked ? `Resultado protegido para ${home} vs ${away}.` : `Resultado liberado para sincronización automática: ${home} vs ${away}.`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'No se pudo cambiar la protección del resultado.');
+    } finally {
+      setChangingLock(false);
     }
   }
 
@@ -368,6 +441,23 @@ function ResultRow({
             <span>{match.venue || 'Sede por definir'}</span>
             <span className="text-slate-600">·</span>
             <StatusBadge status={match.status} />
+            <ResultSourceBadge source={match.result_source} />
+            <ResultLockBadge locked={isLocked} />
+          </div>
+
+          <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-3">
+            <div className="rounded-xl bg-slate-950/40 px-3 py-2">
+              <span className="block font-bold uppercase text-slate-500">Última sync</span>
+              <span className="text-slate-200">{match.last_synced_at ? formatDateTime(match.last_synced_at) : 'Nunca'}</span>
+            </div>
+            <div className="rounded-xl bg-slate-950/40 px-3 py-2">
+              <span className="block font-bold uppercase text-slate-500">Proveedor</span>
+              <span className="text-slate-200">{match.external_provider || '—'}</span>
+            </div>
+            <div className="rounded-xl bg-slate-950/40 px-3 py-2">
+              <span className="block font-bold uppercase text-slate-500">ID externo</span>
+              <span className="text-slate-200">{match.external_match_id || '—'}</span>
+            </div>
           </div>
         </div>
 
@@ -396,9 +486,34 @@ function ResultRow({
           >
             {saving ? 'Guardando...' : 'Guardar'}
           </button>
+          <button
+            type="button"
+            disabled={changingLock}
+            onClick={() => setResultLock(!isLocked)}
+            className="col-span-2 rounded-xl border border-white/10 px-4 py-3 font-black text-white hover:bg-white/10 disabled:cursor-wait disabled:bg-slate-700 disabled:text-slate-400 sm:col-span-3"
+          >
+            {changingLock ? 'Actualizando protección...' : isLocked ? 'Permitir sync automática' : 'Proteger resultado'}
+          </button>
         </div>
       </div>
     </form>
+  );
+}
+
+function ResultSourceBadge({ source }: { source: Match['result_source'] }) {
+  const isAutomatic = source === 'FOOTBALL_DATA';
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-black ${isAutomatic ? 'bg-sky-400 text-slate-950' : 'bg-violet-400 text-slate-950'}`}>
+      {isAutomatic ? 'Sync automática' : 'Manual'}
+    </span>
+  );
+}
+
+function ResultLockBadge({ locked }: { locked: boolean }) {
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-black ${locked ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-300'}`}>
+      {locked ? 'Protegido' : 'Editable por sync'}
+    </span>
   );
 }
 
@@ -613,7 +728,26 @@ function FixtureRow({
             <TeamMiniLabel name={match.away_team_name || 'Equipo por definir'} flagCode={match.away_flag_code} />
           </div>
         </div>
-        <StatusBadge status={match.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={match.status} />
+          <ResultSourceBadge source={match.result_source} />
+          <ResultLockBadge locked={match.manually_locked === 1} />
+        </div>
+      </div>
+
+      <div className="mb-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-3">
+        <div className="rounded-xl bg-slate-950/40 px-3 py-2">
+          <span className="block font-bold uppercase text-slate-500">Última sync</span>
+          <span className="text-slate-200">{match.last_synced_at ? formatDateTime(match.last_synced_at) : 'Nunca'}</span>
+        </div>
+        <div className="rounded-xl bg-slate-950/40 px-3 py-2">
+          <span className="block font-bold uppercase text-slate-500">Proveedor</span>
+          <span className="text-slate-200">{match.external_provider || '—'}</span>
+        </div>
+        <div className="rounded-xl bg-slate-950/40 px-3 py-2">
+          <span className="block font-bold uppercase text-slate-500">ID externo</span>
+          <span className="text-slate-200">{match.external_match_id || '—'}</span>
+        </div>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
@@ -721,6 +855,12 @@ function TeamMiniLabel({ name, flagCode }: { name: string; flagCode: string | nu
 }
 
 function toDateTimeLocal(value: string) {
+  if (!value) return '';
+
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+  if (match) return `${match[1]}T${match[2]}`;
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   const pad = (number: number) => String(number).padStart(2, '0');
@@ -1005,12 +1145,12 @@ function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
       <div>
         <h2 className="text-2xl font-black text-emerald-300">Sincronización de resultados</h2>
         <p className="mt-1 text-sm text-slate-300">
-          Historial de sincronizaciones automáticas y manuales contra football-data.org. Si un resultado ya estaba cargado o bloqueado manualmente, se marca como saltado.
+          Historial de sincronizaciones automáticas y manuales contra football-data.org. También muestra qué partidos se actualizaron o quedaron sin matchear.
         </p>
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/10">
-        <div className="hidden overflow-x-auto lg:block">
+        <div className="hidden overflow-x-auto xl:block">
           <table className="min-w-full text-sm">
             <thead className="bg-white/10 text-left text-slate-300">
               <tr>
@@ -1021,13 +1161,14 @@ function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
                 <th className="px-4 py-3 text-right">Actualizados</th>
                 <th className="px-4 py-3 text-right">Saltados</th>
                 <th className="px-4 py-3 text-right">No encontrados</th>
+                <th className="px-4 py-3">Detalle</th>
                 <th className="px-4 py-3">Error</th>
               </tr>
             </thead>
             <tbody>
               {logs.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-slate-400" colSpan={8}>
+                  <td className="px-4 py-4 text-slate-400" colSpan={9}>
                     Todavía no hay sincronizaciones registradas.
                   </td>
                 </tr>
@@ -1045,6 +1186,7 @@ function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
                     <td className="px-4 py-3 text-right font-bold text-emerald-300">{log.updated_count}</td>
                     <td className="px-4 py-3 text-right font-bold">{log.skipped_count}</td>
                     <td className="px-4 py-3 text-right font-bold">{log.unmatched_count}</td>
+                    <td className="max-w-[360px] px-4 py-3 text-slate-300"><SyncLogDetail log={log} /></td>
                     <td className="max-w-[280px] px-4 py-3 text-slate-300">{log.error_message || '—'}</td>
                   </tr>
                 ))
@@ -1053,7 +1195,7 @@ function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
           </table>
         </div>
 
-        <div className="grid gap-3 p-3 lg:hidden">
+        <div className="grid gap-3 p-3 xl:hidden">
           {logs.length === 0 ? (
             <div className="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">Todavía no hay sincronizaciones registradas.</div>
           ) : (
@@ -1077,6 +1219,10 @@ function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
                   <SmallSyncStat label="No encontrados" value={log.unmatched_count} />
                 </div>
 
+                <div className="mt-3 rounded-xl bg-white/5 p-3 text-sm text-slate-300">
+                  <SyncLogDetail log={log} />
+                </div>
+
                 {log.error_message && <div className="mt-3 rounded-xl bg-red-400/10 p-3 text-sm text-red-200">{log.error_message}</div>}
               </article>
             ))
@@ -1084,6 +1230,46 @@ function SyncLogsAdmin({ logs }: { logs: ResultSyncLog[] }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function SyncLogDetail({ log }: { log: ResultSyncLog }) {
+  const detail = parseSyncLogDetail(log.detail);
+
+  if (!detail.updated_matches.length && !detail.unmatched_matches.length) {
+    return <span className="text-slate-500">Sin cambios nuevos.</span>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {detail.updated_matches.length > 0 && (
+        <div>
+          <div className="font-bold text-emerald-300">Actualizados</div>
+          <ul className="mt-1 space-y-1 text-xs text-slate-300">
+            {detail.updated_matches.slice(0, 4).map((match) => (
+              <li key={`${log.id}-updated-${match.match_order}`}>
+                #{match.match_order} {match.home_team} {match.home_score}-{match.away_score} {match.away_team}
+              </li>
+            ))}
+            {detail.updated_matches.length > 4 && <li>+{detail.updated_matches.length - 4} más</li>}
+          </ul>
+        </div>
+      )}
+
+      {detail.unmatched_matches.length > 0 && (
+        <div>
+          <div className="font-bold text-amber-300">Sin matchear</div>
+          <ul className="mt-1 space-y-1 text-xs text-slate-300">
+            {detail.unmatched_matches.slice(0, 4).map((match) => (
+              <li key={`${log.id}-unmatched-${match.external_match_id}`}>
+                Ext. {match.external_match_id}: {match.home_team || 'Local'} {match.home_score}-{match.away_score} {match.away_team || 'Visitante'}
+              </li>
+            ))}
+            {detail.unmatched_matches.length > 4 && <li>+{detail.unmatched_matches.length - 4} más</li>}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1146,8 +1332,45 @@ function AuditLogsAdmin({ logs }: { logs: AdminAuditLog[] }) {
   );
 }
 
+type ParsedSyncLogDetail = {
+  updated_matches: Array<{
+    match_order: number;
+    home_team: string;
+    away_team: string;
+    home_score: number;
+    away_score: number;
+  }>;
+  unmatched_matches: Array<{
+    external_match_id: number;
+    home_team: string | null;
+    away_team: string | null;
+    utc_date: string;
+    home_score: number;
+    away_score: number;
+  }>;
+};
+
+function parseSyncLogDetail(value: string | null): ParsedSyncLogDetail {
+  if (!value) return { updated_matches: [], unmatched_matches: [] };
+
+  try {
+    const parsed = JSON.parse(value) as Partial<ParsedSyncLogDetail>;
+    return {
+      updated_matches: Array.isArray(parsed.updated_matches) ? parsed.updated_matches : [],
+      unmatched_matches: Array.isArray(parsed.unmatched_matches) ? parsed.unmatched_matches : []
+    };
+  } catch {
+    return { updated_matches: [], unmatched_matches: [] };
+  }
+}
+
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString('es-AR', {
+  if (!value) return '—';
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString('es-AR', {
     dateStyle: 'short',
     timeStyle: 'short'
   });
@@ -1164,6 +1387,8 @@ function labelForAuditAction(action: string) {
     UPDATE_SCORING_RULES: 'Reglas actualizadas',
     RECALCULATE_POINTS: 'Puntos recalculados',
     SYNC_RESULTS: 'Resultados sincronizados',
+    LOCK_MATCH_RESULT_SYNC: 'Resultado protegido',
+    UNLOCK_MATCH_RESULT_SYNC: 'Resultado liberado',
     LOCK_PREDICTIONS: 'Carga bloqueada',
     UNLOCK_PREDICTIONS: 'Carga desbloqueada'
   };

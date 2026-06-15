@@ -40,6 +40,8 @@ export type Team = {
   group_name: string | null;
 };
 
+export type ResultSource = 'MANUAL' | 'FOOTBALL_DATA';
+
 export type Match = {
   id: number;
   stage: string;
@@ -61,7 +63,7 @@ export type Match = {
   external_provider: string | null;
   external_match_id: string | null;
   last_synced_at: string | null;
-  result_source: 'MANUAL' | 'FOOTBALL_DATA';
+  result_source: ResultSource;
   manually_locked: number;
 };
 
@@ -191,6 +193,11 @@ export type ResultSyncSummary = {
   }>;
 };
 
+export type ResultSyncLogDetail = {
+  updated_matches: ResultSyncSummary['updated_matches'];
+  unmatched_matches: ResultSyncSummary['unmatched_matches'];
+};
+
 export type ResultSyncLog = {
   id: number;
   provider: string;
@@ -205,4 +212,9 @@ export type ResultSyncLog = {
   detail: string | null;
   error_message: string | null;
   created_at: string;
+};
+
+export type MatchResultLockResponse = {
+  ok: boolean;
+  manually_locked: number;
 };

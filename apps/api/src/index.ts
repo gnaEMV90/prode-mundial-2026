@@ -188,6 +188,10 @@ const resultSchema = z.object({
   status: z.enum(['SCHEDULED', 'LIVE', 'FINISHED']).default('FINISHED')
 });
 
+const resultLockSchema = z.object({
+  manually_locked: z.boolean()
+});
+
 const updateMatchSchema = z.object({
   stage: z.string().trim().min(1).max(80).optional(),
   group_name: z.string().trim().max(20).nullable().optional(),
@@ -712,6 +716,40 @@ app.post('/admin/matches/:id/result', requireAdmin, async (c) => {
     status: input.data.status
   });
   return c.json({ ok: true });
+});
+
+app.post('/admin/matches/:id/result-lock', requireAdmin, async (c) => {
+  const matchId = Number(c.req.param('id'));
+  if (!Number.isInteger(matchId) || matchId <= 0) return badRequest(c, 'Partido inválido.');
+
+  const body = await parseBody(c);
+  const input = resultLockSchema.safeParse(body);
+  if (!input.success) return badRequest(c, 'Valor de bloqueo inválido.');
+
+  const match = await c.env.DB.prepare('SELECT id, match_order, manually_locked FROM matches WHERE id = ?').bind(matchId).first<{
+    id: number;
+    match_order: number;
+    manually_locked: number;
+  }>();
+  if (!match) return notFound(c, 'No se encontró el partido.');
+
+  const nextLocked = input.data.manually_locked ? 1 : 0;
+
+  await c.env.DB.prepare(`
+    UPDATE matches
+    SET manually_locked = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).bind(nextLocked, matchId).run();
+
+  await logAdminAction(
+    c,
+    nextLocked === 1 ? 'LOCK_MATCH_RESULT_SYNC' : 'UNLOCK_MATCH_RESULT_SYNC',
+    'matches',
+    String(matchId),
+    { match_order: match.match_order, manually_locked: nextLocked === 1 }
+  );
+
+  return c.json({ ok: true, manually_locked: nextLocked });
 });
 
 app.get('/admin/tournament-results', requireAdmin, async (c) => {
