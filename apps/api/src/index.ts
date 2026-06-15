@@ -1380,9 +1380,9 @@ async function syncFootballDataResults(db: D1Database, token?: string): Promise<
       const homeScore = Number(homeScoreValue);
       const awayScore = Number(awayScoreValue);
 
-      const localMatch = findLocalMatchForSync(externalMatch, localMatches);
+      const matchCandidate = findLocalMatchForSync(externalMatch, localMatches);
 
-      if (!localMatch) {
+      if (!matchCandidate) {
         summary.unmatched_count += 1;
         summary.unmatched_matches.push({
           external_match_id: externalMatch.id,
@@ -1395,11 +1395,14 @@ async function syncFootballDataResults(db: D1Database, token?: string): Promise<
         continue;
       }
 
+      const { match: localMatch, isReversed } = matchCandidate;
+      const localHomeScore = isReversed ? awayScore : homeScore;
+      const localAwayScore = isReversed ? homeScore : awayScore;
       const externalMatchId = String(externalMatch.id);
       const hasResultChange =
         localMatch.status !== 'FINISHED' ||
-        localMatch.home_score !== homeScore ||
-        localMatch.away_score !== awayScore;
+        localMatch.home_score !== localHomeScore ||
+        localMatch.away_score !== localAwayScore;
 
       if (localMatch.manually_locked === 1) {
         await db.prepare(`
@@ -1436,7 +1439,7 @@ async function syncFootballDataResults(db: D1Database, token?: string): Promise<
           manually_locked = 0,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).bind(homeScore, awayScore, FOOTBALL_DATA_PROVIDER, externalMatchId, localMatch.id).run();
+      `).bind(localHomeScore, localAwayScore, FOOTBALL_DATA_PROVIDER, externalMatchId, localMatch.id).run();
 
       await recalculateMatch(db, localMatch.id);
 
@@ -1445,8 +1448,8 @@ async function syncFootballDataResults(db: D1Database, token?: string): Promise<
         match_order: localMatch.match_order,
         home_team: localMatch.home_team_name || externalMatch.homeTeam.name || 'Local',
         away_team: localMatch.away_team_name || externalMatch.awayTeam.name || 'Visitante',
-        home_score: homeScore,
-        away_score: awayScore
+        home_score: localHomeScore,
+        away_score: localAwayScore
       });
     }
 
@@ -1497,16 +1500,42 @@ async function getLocalMatchesForSync(db: D1Database) {
 function findLocalMatchForSync(externalMatch: FootballDataMatch, localMatches: LocalMatchForSync[]) {
   const externalId = String(externalMatch.id);
   const directMatch = localMatches.find((match) => match.external_provider === FOOTBALL_DATA_PROVIDER && match.external_match_id === externalId);
-  if (directMatch) return directMatch;
+
+  if (directMatch) {
+    const directDirection = getMatchDirectionForSync(externalMatch, directMatch);
+    return { match: directMatch, isReversed: directDirection === 'REVERSED' };
+  }
 
   const candidates = localMatches
-    .filter((match) => teamsMatchForSync(externalMatch.homeTeam, match.home_team_name, match.home_team_code))
-    .filter((match) => teamsMatchForSync(externalMatch.awayTeam, match.away_team_name, match.away_team_code))
-    .map((match) => ({ match, diff: dateDiffMs(externalMatch.utcDate, match.starts_at) }))
+    .map((match) => ({ match, direction: getMatchDirectionForSync(externalMatch, match) }))
+    .filter((candidate): candidate is { match: LocalMatchForSync; direction: 'NORMAL' | 'REVERSED' } => candidate.direction !== null)
+    .map((candidate) => ({
+      match: candidate.match,
+      isReversed: candidate.direction === 'REVERSED',
+      diff: dateDiffMs(externalMatch.utcDate, candidate.match.starts_at)
+    }))
     .sort((a, b) => a.diff - b.diff);
 
   const closeCandidate = candidates.find((candidate) => candidate.diff <= 36 * 60 * 60 * 1000);
-  return closeCandidate?.match || candidates[0]?.match || null;
+  return closeCandidate || candidates[0] || null;
+}
+
+function getMatchDirectionForSync(externalMatch: FootballDataMatch, localMatch: LocalMatchForSync): 'NORMAL' | 'REVERSED' | null {
+  const homeMatchesHome = teamsMatchForSync(externalMatch.homeTeam, localMatch.home_team_name, localMatch.home_team_code);
+  const awayMatchesAway = teamsMatchForSync(externalMatch.awayTeam, localMatch.away_team_name, localMatch.away_team_code);
+
+  if (homeMatchesHome && awayMatchesAway) {
+    return 'NORMAL';
+  }
+
+  const homeMatchesAway = teamsMatchForSync(externalMatch.homeTeam, localMatch.away_team_name, localMatch.away_team_code);
+  const awayMatchesHome = teamsMatchForSync(externalMatch.awayTeam, localMatch.home_team_name, localMatch.home_team_code);
+
+  if (homeMatchesAway && awayMatchesHome) {
+    return 'REVERSED';
+  }
+
+  return null;
 }
 
 function teamsMatchForSync(
@@ -1592,6 +1621,14 @@ function canonicalTeamName(value: string) {
     sui: 'switzerland',
     switzerland: 'switzerland',
     suiza: 'switzerland',
+    sen: 'senegal',
+    senegal: 'senegal',
+    swe: 'sweden',
+    sweden: 'sweden',
+    suecia: 'sweden',
+    tun: 'tunisia',
+    tunisia: 'tunisia',
+    tunez: 'tunisia',
     tur: 'turkiye',
     turkey: 'turkiye',
     turkiye: 'turkiye',
