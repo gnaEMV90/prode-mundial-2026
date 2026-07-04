@@ -4,7 +4,7 @@ import { api, Match, Prediction } from '../lib/api';
 import { Message } from '../components/Message';
 import { TeamBadge } from './Fixture';
 
-type PredictionForm = Record<number, { home_score: string; away_score: string }>;
+type PredictionForm = Record<number, { home_score: string; away_score: string; winner_team_id: string }>;
 type FilterMode = 'all' | 'pending' | 'loaded' | 'live';
 
 export function MyPredictions() {
@@ -71,7 +71,8 @@ export function MyPredictions() {
     predictions.forEach((prediction) => {
       next[prediction.match_id] = {
         home_score: String(prediction.home_score),
-        away_score: String(prediction.away_score)
+        away_score: String(prediction.away_score),
+        winner_team_id: prediction.winner_team_id ? String(prediction.winner_team_id) : ''
       };
     });
 
@@ -83,7 +84,7 @@ export function MyPredictions() {
     setMessage('');
     setError('');
 
-    const values = form[match.id] || { home_score: '', away_score: '' };
+    const values = form[match.id] || { home_score: '', away_score: '', winner_team_id: '' };
     const home = Number(values.home_score);
     const away = Number(values.away_score);
 
@@ -92,10 +93,16 @@ export function MyPredictions() {
       return;
     }
 
+    const winnerTeamId = getWinnerTeamIdForPayload(match, home, away, values.winner_team_id);
+    if (winnerTeamId instanceof Error) {
+      setError(winnerTeamId.message);
+      return;
+    }
+
     try {
       await api(`/predictions/${match.id}`, {
         method: 'PUT',
-        body: { home_score: home, away_score: away }
+        body: { home_score: home, away_score: away, winner_team_id: winnerTeamId }
       });
 
       await load();
@@ -105,14 +112,15 @@ export function MyPredictions() {
     }
   }
 
-  function update(matchId: number, field: 'home_score' | 'away_score', value: string) {
-    const cleanValue = value.replace(/[^\d]/g, '').slice(0, 2);
+  function update(matchId: number, field: 'home_score' | 'away_score' | 'winner_team_id', value: string) {
+    const cleanValue = field === 'winner_team_id' ? value : value.replace(/[^\d]/g, '').slice(0, 2);
 
     setForm((current) => ({
       ...current,
       [matchId]: {
         home_score: current[matchId]?.home_score || '',
         away_score: current[matchId]?.away_score || '',
+        winner_team_id: current[matchId]?.winner_team_id || '',
         [field]: cleanValue
       }
     }));
@@ -121,7 +129,8 @@ export function MyPredictions() {
   function renderPredictionCard(match: Match, historical = false) {
     const prediction = predictionByMatch.get(match.id);
     const locked = isMatchLocked(match);
-    const values = form[match.id] || { home_score: '', away_score: '' };
+    const values = form[match.id] || { home_score: '', away_score: '', winner_team_id: '' };
+    const showWinnerSelector = shouldShowWinnerSelector(match, values.home_score, values.away_score);
 
     return (
       <article key={match.id} className={predictionCardClassName(match, historical)}>
@@ -148,6 +157,15 @@ export function MyPredictions() {
             />
           </div>
 
+          {showWinnerSelector && (
+            <WinnerSelector
+              match={match}
+              value={values.winner_team_id}
+              disabled={locked}
+              onChange={(value) => update(match.id, 'winner_team_id', value)}
+            />
+          )}
+
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <PredictionPointsPill prediction={prediction} match={match} />
 
@@ -170,8 +188,7 @@ export function MyPredictions() {
       <section className="rounded-3xl border border-white/10 bg-white/10 p-5">
         <h1 className="text-3xl font-black">Mis pronósticos</h1>
         <p className="mt-2 text-sm leading-6 text-slate-300 sm:text-base">
-          Por defecto te mostramos solo los partidos que todavía podés cargar o revisar antes de que arranquen. Los
-          finalizados quedan ocultos para no llenar la pantalla de historia antigua con botines.
+          Por defecto te mostramos solo los partidos que todavía podés cargar o revisar antes de que arranquen. En eliminatorias, si pronosticás empate, también tenés que elegir quién clasifica o gana por penales.
         </p>
       </section>
 
@@ -319,6 +336,11 @@ function PredictionMatchHeader({ match, locked, historical }: { match: Match; lo
           <div className="mt-0.5 text-xl font-black text-white">
             {match.home_score} - {match.away_score}
           </div>
+          {match.home_score === match.away_score && match.winner_team_id && (
+            <div className="mt-1 text-xs font-bold text-emerald-200">
+              Ganó por penales: {teamNameById(match, match.winner_team_id)}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -358,6 +380,36 @@ function ScoreInputBlock({
   );
 }
 
+function WinnerSelector({
+  match,
+  value,
+  disabled,
+  onChange
+}: {
+  match: Match;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block rounded-2xl border border-amber-300/20 bg-amber-400/10 p-3">
+      <span className="text-xs font-black uppercase tracking-wide text-amber-100">
+        Empate en eliminatoria: ¿quién clasifica/gana por penales?
+      </span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-black text-white outline-none focus:border-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+      >
+        <option value="">Elegí ganador</option>
+        {match.home_team_id && <option value={String(match.home_team_id)}>{match.home_team_name || 'Local'}</option>}
+        {match.away_team_id && <option value={String(match.away_team_id)}>{match.away_team_name || 'Visitante'}</option>}
+      </select>
+    </label>
+  );
+}
+
 function PredictionPointsPill({ prediction, match }: { prediction: Prediction | undefined; match: Match }) {
   if (!prediction) {
     return <span className="text-sm text-slate-400">Sin pronóstico cargado</span>;
@@ -367,6 +419,7 @@ function PredictionPointsPill({ prediction, match }: { prediction: Prediction | 
     return (
       <span className="w-fit rounded-full bg-slate-900 px-3 py-1 text-sm font-bold text-slate-300">
         Pronóstico: {prediction.home_score} - {prediction.away_score}
+        {prediction.winner_team_id && prediction.home_score === prediction.away_score ? ` · pasa ${teamNameById(match, prediction.winner_team_id)}` : ''}
       </span>
     );
   }
@@ -393,6 +446,7 @@ function PredictionDetail({
 }) {
   const realHome = prediction?.real_home_score ?? match.home_score;
   const realAway = prediction?.real_away_score ?? match.away_score;
+  const realWinner = prediction?.real_winner_team_id ?? match.winner_team_id;
 
   if (!prediction) {
     if (match.status === 'FINISHED') {
@@ -417,8 +471,8 @@ function PredictionDetail({
   return (
     <div className={`mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 ${historical ? 'opacity-95' : ''}`}>
       <div className="grid gap-3 text-sm sm:grid-cols-3">
-        <ScoreLine label="Tu pronóstico" home={prediction.home_score} away={prediction.away_score} />
-        <ScoreLine label="Resultado real" home={realHome} away={realAway} />
+        <ScoreLine label="Tu pronóstico" home={prediction.home_score} away={prediction.away_score} winner={prediction.winner_team_id ? teamNameById(match, prediction.winner_team_id) : null} />
+        <ScoreLine label="Resultado real" home={realHome} away={realAway} winner={realWinner ? teamNameById(match, realWinner) : null} />
 
         <div>
           <div className="text-xs uppercase tracking-wide text-slate-500">Puntos</div>
@@ -445,13 +499,14 @@ function PredictionDetail({
   );
 }
 
-function ScoreLine({ label, home, away }: { label: string; home: number; away: number }) {
+function ScoreLine({ label, home, away, winner }: { label: string; home: number; away: number; winner?: string | null }) {
   return (
     <div>
       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 text-xl font-black text-white">
         {home} - {away}
       </div>
+      {winner && home === away && <div className="mt-1 text-xs font-bold text-emerald-200">Pasa/gana: {winner}</div>}
     </div>
   );
 }
@@ -525,4 +580,54 @@ function predictionCardClassName(match: Match, historical: boolean) {
   }
 
   return `${base} border-white/10 bg-white/10`;
+}
+
+function shouldShowWinnerSelector(match: Match, homeScore: string, awayScore: string) {
+  const home = Number(homeScore);
+  const away = Number(awayScore);
+  return Boolean(Number.isInteger(home) && Number.isInteger(away) && home === away && isKnockoutMatch(match) && match.home_team_id && match.away_team_id);
+}
+
+function getWinnerTeamIdForPayload(match: Match, home: number, away: number, rawWinner: string) {
+  if (home !== away || !isKnockoutMatch(match)) return null;
+
+  if (!match.home_team_id || !match.away_team_id) {
+    return new Error('Todavía no están definidos los equipos para elegir ganador.');
+  }
+
+  const winner = Number(rawWinner);
+  if (!Number.isInteger(winner) || ![match.home_team_id, match.away_team_id].includes(winner)) {
+    return new Error('Si pronosticás empate en una eliminatoria, elegí quién clasifica/gana por penales.');
+  }
+
+  return winner;
+}
+
+function isKnockoutMatch(match: Match) {
+  if (match.group_name) return false;
+
+  const stage = normalizeText(match.stage);
+  if (stage.includes('grupo') || stage.includes('group')) return false;
+
+  return (
+    stage.includes('32') ||
+    stage.includes('octavos') ||
+    stage.includes('cuartos') ||
+    stage.includes('semi') ||
+    stage.includes('tercer') ||
+    stage.includes('final')
+  );
+}
+
+function teamNameById(match: Match, teamId: number) {
+  if (match.home_team_id === teamId) return match.home_team_name || 'Local';
+  if (match.away_team_id === teamId) return match.away_team_name || 'Visitante';
+  return 'equipo elegido';
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 }
