@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name prodemundial2026-aci"
+    "deploy": "npm run build && wrangler pages deploy dist --project-name prodemundial2026"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -28,5 +28,6 @@
     "wrangler": "^3.109.2"
   }
 }
+
 
 
