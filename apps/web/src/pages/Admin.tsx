@@ -406,6 +406,12 @@ function ResultRow({
       return;
     }
 
+    const winnerPayload = getAdminWinnerTeamIdForPayload(match, homeNumber, awayNumber, 'FINISHED', winnerTeamId);
+
+    if (winnerPayload instanceof Error) {
+      onError(winnerPayload.message);
+      return;
+    }
     if (!window.confirm(`Vas a guardar el resultado ${home} ${homeNumber} - ${awayNumber} ${away} y recalcular el ranking. TambiÃ©n quedarÃ¡ protegido contra sincronizaciÃ³n automÃ¡tica. Â¿Continuar?`)) {
       return;
     }
@@ -414,7 +420,7 @@ function ResultRow({
     try {
       await api(`/admin/matches/${match.id}/result`, {
         method: 'POST',
-        body: { home_score: homeNumber, away_score: awayNumber, status: 'FINISHED' }
+        body: { home_score: homeNumber, away_score: awayNumber, winner_team_id: winnerPayload, status: 'FINISHED' }
       });
       await onSaved();
       onMessage(`Resultado guardado manualmente: ${home} ${homeNumber} - ${awayNumber} ${away}. Ranking actualizado y partido protegido.`);
@@ -517,6 +523,18 @@ function ResultRow({
             aria-label={`Goles de ${away}`}
             onChange={(event) => setAwayScore(event.target.value)}
           />
+          {shouldShowAdminWinnerSelector(match, homeScore, awayScore) && (
+            <select
+              value={winnerTeamId}
+              onChange={(event) => setWinnerTeamId(event.target.value)}
+              className="col-span-2 rounded-xl border border-amber-300/30 bg-slate-900 px-3 py-3 text-sm font-black text-white outline-none focus:border-emerald-300 sm:col-span-3"
+              aria-label="Ganador por penales"
+            >
+              <option value="">Ganador por penales</option>
+              {match.home_team_id && <option value={String(match.home_team_id)}>{home}</option>}
+              {match.away_team_id && <option value={String(match.away_team_id)}>{away}</option>}
+            </select>
+          )}
           <button
             disabled={saving}
             className="col-span-2 rounded-xl bg-emerald-400 px-4 py-3 font-black text-slate-950 hover:bg-emerald-300 disabled:cursor-wait disabled:bg-slate-600 disabled:text-slate-300 sm:col-span-1"
@@ -583,16 +601,7 @@ function isAdminKnockoutMatch(match: Match) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
-  if (stage.includes('grupo') || stage.includes('group')) return false;
-
-  return (
-    stage.includes('32') ||
-    stage.includes('octavos') ||
-    stage.includes('cuartos') ||
-    stage.includes('semi') ||
-    stage.includes('tercer') ||
-    stage.includes('final')
-  );
+  return !stage.includes('grupo') && !stage.includes('group');
 }
 
 function ResultSourceBadge({ source }: { source: Match['result_source'] }) {
@@ -1574,4 +1583,5 @@ function statusText(status: Match['status']) {
   if (status === 'LIVE') return 'En vivo';
   return 'Programado';
 }
+
 
