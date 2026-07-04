@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, AdminAuditLog, Match, Pagination, ResultSyncLog, ResultSyncLogsResponse, ResultSyncSummary, ScoringRules, Team, TournamentResults, User } from '../lib/api';
 import { Message } from '../components/Message';
 import { FlagIcon } from '../components/FlagIcon';
@@ -75,7 +75,7 @@ export function Admin() {
     setError('');
     setMessage('');
 
-    if (!window.confirm('Vas a recalcular todos los puntajes del ranking. ¿Continuar?')) return;
+    if (!window.confirm('Vas a recalcular todos los puntajes del ranking. Â¿Continuar?')) return;
 
     try {
       await api('/admin/recalculate', { method: 'POST' });
@@ -90,14 +90,14 @@ export function Admin() {
     setError('');
     setMessage('');
 
-    if (!window.confirm('Vas a sincronizar resultados desde football-data.org y recalcular los partidos actualizados. ¿Continuar?')) return;
+    if (!window.confirm('Vas a sincronizar resultados desde football-data.org y recalcular los partidos actualizados. Â¿Continuar?')) return;
 
     setSyncingResults(true);
     try {
       const response = await api<{ summary: ResultSyncSummary }>('/admin/sync-results', { method: 'POST' });
       await load();
       setMessage(
-        `Sincronización finalizada. Leídos: ${response.summary.fetched_count}. Finalizados: ${response.summary.finished_count}. Actualizados: ${response.summary.updated_count}. Saltados: ${response.summary.skipped_count}. No encontrados: ${response.summary.unmatched_count}.`
+        `SincronizaciÃ³n finalizada. LeÃ­dos: ${response.summary.fetched_count}. Finalizados: ${response.summary.finished_count}. Actualizados: ${response.summary.updated_count}. Saltados: ${response.summary.skipped_count}. No encontrados: ${response.summary.unmatched_count}.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo sincronizar resultados.');
@@ -111,8 +111,8 @@ export function Admin() {
     setMessage('');
 
     const text = locked
-      ? 'Vas a bloquear la carga general de pronósticos. ¿Continuar?'
-      : 'Vas a desbloquear la carga general de pronósticos. ¿Continuar?';
+      ? 'Vas a bloquear la carga general de pronÃ³sticos. Â¿Continuar?'
+      : 'Vas a desbloquear la carga general de pronÃ³sticos. Â¿Continuar?';
     if (!window.confirm(text)) return;
 
     try {
@@ -128,8 +128,8 @@ export function Admin() {
     setMessage('');
 
     const text = locked
-      ? 'Vas a bloquear las predicciones especiales. ¿Continuar?'
-      : 'Vas a desbloquear las predicciones especiales. ¿Continuar?';
+      ? 'Vas a bloquear las predicciones especiales. Â¿Continuar?'
+      : 'Vas a desbloquear las predicciones especiales. Â¿Continuar?';
     if (!window.confirm(text)) return;
 
     try {
@@ -280,7 +280,7 @@ function ResultsAdmin({
       <div>
         <h2 className="text-2xl font-black text-emerald-300">Resultados</h2>
         <p className="mt-1 text-sm text-slate-300">
-          Guardá resultados, revisá si fueron manuales o sincronizados, y bloqueá partidos para que la sincronización automática no los pise.
+          GuardÃ¡ resultados, revisÃ¡ si fueron manuales o sincronizados, y bloqueÃ¡ partidos para que la sincronizaciÃ³n automÃ¡tica no los pise.
         </p>
       </div>
 
@@ -288,7 +288,7 @@ function ResultsAdmin({
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar selección, estadio, etapa, fuente o número"
+          placeholder="Buscar selecciÃ³n, estadio, etapa, fuente o nÃºmero"
           className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-emerald-300"
         />
 
@@ -333,7 +333,7 @@ function ResultsAdmin({
         >
           <option value="ALL">Todos los bloqueos</option>
           <option value="LOCKED">Protegidos</option>
-          <option value="UNLOCKED">Sin protección</option>
+          <option value="UNLOCKED">Sin protecciÃ³n</option>
         </select>
 
         <button onClick={clearFilters} className="rounded-2xl border border-white/10 px-4 py-3 font-black hover:bg-white/10">
@@ -379,6 +379,7 @@ function ResultRow({
 }) {
   const [homeScore, setHomeScore] = useState(match.home_score !== null ? String(match.home_score) : '');
   const [awayScore, setAwayScore] = useState(match.away_score !== null ? String(match.away_score) : '');
+  const [winnerTeamId, setWinnerTeamId] = useState(match.winner_team_id ? String(match.winner_team_id) : '');
   const [saving, setSaving] = useState(false);
   const [changingLock, setChangingLock] = useState(false);
   const home = match.home_team_name || 'Equipo por definir';
@@ -389,7 +390,8 @@ function ResultRow({
   useEffect(() => {
     setHomeScore(match.home_score !== null ? String(match.home_score) : '');
     setAwayScore(match.away_score !== null ? String(match.away_score) : '');
-  }, [match.home_score, match.away_score]);
+    setWinnerTeamId(match.winner_team_id ? String(match.winner_team_id) : '');
+  }, [match.home_score, match.away_score, match.winner_team_id]);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -400,11 +402,11 @@ function ResultRow({
     const awayNumber = Number(awayScore);
 
     if (!Number.isInteger(homeNumber) || !Number.isInteger(awayNumber) || homeNumber < 0 || awayNumber < 0) {
-      onError('Resultado inválido. Usá números enteros mayores o iguales a cero.');
+      onError('Resultado invÃ¡lido. UsÃ¡ nÃºmeros enteros mayores o iguales a cero.');
       return;
     }
 
-    if (!window.confirm(`Vas a guardar el resultado ${home} ${homeNumber} - ${awayNumber} ${away} y recalcular el ranking. También quedará protegido contra sincronización automática. ¿Continuar?`)) {
+    if (!window.confirm(`Vas a guardar el resultado ${home} ${homeNumber} - ${awayNumber} ${away} y recalcular el ranking. TambiÃ©n quedarÃ¡ protegido contra sincronizaciÃ³n automÃ¡tica. Â¿Continuar?`)) {
       return;
     }
 
@@ -428,8 +430,8 @@ function ResultRow({
     onError('');
 
     const text = nextLocked
-      ? `Vas a proteger el resultado de ${home} vs ${away}. La sincronización automática no lo va a pisar. ¿Continuar?`
-      : `Vas a permitir que la sincronización automática pueda actualizar ${home} vs ${away}. ¿Continuar?`;
+      ? `Vas a proteger el resultado de ${home} vs ${away}. La sincronizaciÃ³n automÃ¡tica no lo va a pisar. Â¿Continuar?`
+      : `Vas a permitir que la sincronizaciÃ³n automÃ¡tica pueda actualizar ${home} vs ${away}. Â¿Continuar?`;
 
     if (!window.confirm(text)) return;
 
@@ -440,9 +442,9 @@ function ResultRow({
         body: { manually_locked: nextLocked }
       });
       await onSaved();
-      onMessage(nextLocked ? `Resultado protegido para ${home} vs ${away}.` : `Resultado liberado para sincronización automática: ${home} vs ${away}.`);
+      onMessage(nextLocked ? `Resultado protegido para ${home} vs ${away}.` : `Resultado liberado para sincronizaciÃ³n automÃ¡tica: ${home} vs ${away}.`);
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'No se pudo cambiar la protección del resultado.');
+      onError(err instanceof Error ? err.message : 'No se pudo cambiar la protecciÃ³n del resultado.');
     } finally {
       setChangingLock(false);
     }
@@ -454,15 +456,15 @@ function ResultRow({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-slate-400">
             <span>#{match.match_order}</span>
-            <span>·</span>
+            <span>Â·</span>
             <span>{match.stage}</span>
             {match.group_name && (
               <>
-                <span>·</span>
+                <span>Â·</span>
                 <span>Grupo {match.group_name}</span>
               </>
             )}
-            <span>·</span>
+            <span>Â·</span>
             <span>{date}</span>
           </div>
 
@@ -474,7 +476,7 @@ function ResultRow({
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-300">
             <span>{match.venue || 'Sede por definir'}</span>
-            <span className="text-slate-600">·</span>
+            <span className="text-slate-600">Â·</span>
             <StatusBadge status={match.status} />
             <ResultSourceBadge source={match.result_source} />
             <ResultLockBadge locked={isLocked} />
@@ -482,16 +484,16 @@ function ResultRow({
 
           <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-3">
             <div className="rounded-xl bg-slate-950/40 px-3 py-2">
-              <span className="block font-bold uppercase text-slate-500">Última sync</span>
+              <span className="block font-bold uppercase text-slate-500">Ãšltima sync</span>
               <span className="text-slate-200">{match.last_synced_at ? formatDateTime(match.last_synced_at) : 'Nunca'}</span>
             </div>
             <div className="rounded-xl bg-slate-950/40 px-3 py-2">
               <span className="block font-bold uppercase text-slate-500">Proveedor</span>
-              <span className="text-slate-200">{match.external_provider || '—'}</span>
+              <span className="text-slate-200">{match.external_provider || 'â€”'}</span>
             </div>
             <div className="rounded-xl bg-slate-950/40 px-3 py-2">
               <span className="block font-bold uppercase text-slate-500">ID externo</span>
-              <span className="text-slate-200">{match.external_match_id || '—'}</span>
+              <span className="text-slate-200">{match.external_match_id || 'â€”'}</span>
             </div>
           </div>
         </div>
@@ -527,7 +529,7 @@ function ResultRow({
             onClick={() => setResultLock(!isLocked)}
             className="col-span-2 rounded-xl border border-white/10 px-4 py-3 font-black text-white hover:bg-white/10 disabled:cursor-wait disabled:bg-slate-700 disabled:text-slate-400 sm:col-span-3"
           >
-            {changingLock ? 'Actualizando protección...' : isLocked ? 'Permitir sync automática' : 'Proteger resultado'}
+            {changingLock ? 'Actualizando protecciÃ³n...' : isLocked ? 'Permitir sync automÃ¡tica' : 'Proteger resultado'}
           </button>
         </div>
       </div>
@@ -535,11 +537,69 @@ function ResultRow({
   );
 }
 
+function shouldShowAdminWinnerSelector(match: Match, homeScore: string, awayScore: string) {
+  const home = Number(homeScore);
+  const away = Number(awayScore);
+
+  return Boolean(
+    Number.isInteger(home) &&
+    Number.isInteger(away) &&
+    home === away &&
+    isAdminKnockoutMatch(match) &&
+    match.home_team_id &&
+    match.away_team_id
+  );
+}
+
+function getAdminWinnerTeamIdForPayload(match: Match, home: number, away: number, status: Match['status'], rawWinner: string) {
+  if (status !== 'FINISHED') return null;
+  if (home > away) return match.home_team_id;
+  if (away > home) return match.away_team_id;
+  if (!isAdminKnockoutMatch(match)) return null;
+
+  if (!match.home_team_id || !match.away_team_id) {
+    return new Error('No se puede definir ganador porque faltan equipos en el partido.');
+  }
+
+  const winner = Number(rawWinner);
+  if (!Number.isInteger(winner) || ![match.home_team_id, match.away_team_id].includes(winner)) {
+    return new Error('Si el resultado real termina empatado en una eliminatoria, elegí quién ganó por penales.');
+  }
+
+  return winner;
+}
+
+function teamNameById(match: Match, teamId: number) {
+  if (match.home_team_id === teamId) return match.home_team_name || 'Local';
+  if (match.away_team_id === teamId) return match.away_team_name || 'Visitante';
+  return 'equipo elegido';
+}
+
+function isAdminKnockoutMatch(match: Match) {
+  if (match.group_name) return false;
+
+  const stage = match.stage
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  if (stage.includes('grupo') || stage.includes('group')) return false;
+
+  return (
+    stage.includes('32') ||
+    stage.includes('octavos') ||
+    stage.includes('cuartos') ||
+    stage.includes('semi') ||
+    stage.includes('tercer') ||
+    stage.includes('final')
+  );
+}
+
 function ResultSourceBadge({ source }: { source: Match['result_source'] }) {
   const isAutomatic = source === 'FOOTBALL_DATA';
   return (
     <span className={`rounded-full px-3 py-1 text-xs font-black ${isAutomatic ? 'bg-sky-400 text-slate-950' : 'bg-violet-400 text-slate-950'}`}>
-      {isAutomatic ? 'Sync automática' : 'Manual'}
+      {isAutomatic ? 'Sync automÃ¡tica' : 'Manual'}
     </span>
   );
 }
@@ -556,7 +616,7 @@ function TeamResultLabel({ name, flagCode, isDefined }: { name: string; flagCode
   return (
     <span className="flex items-center gap-3 rounded-2xl bg-slate-950/40 px-3 py-2 font-black text-white">
       <span className="flex h-6 w-8 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-slate-800">
-        {isDefined ? <FlagIcon code={flagCode} label={`Bandera de ${name}`} /> : <span className="text-xs text-slate-400">—</span>}
+        {isDefined ? <FlagIcon code={flagCode} label={`Bandera de ${name}`} /> : <span className="text-xs text-slate-400">â€”</span>}
       </span>
       <span>{name}</span>
     </span>
@@ -623,7 +683,7 @@ function FixtureAdmin({
       <div>
         <h2 className="text-2xl font-black text-emerald-300">Fixture editable</h2>
         <p className="mt-1 text-sm text-slate-300">
-          Editá equipos, etapa, grupo, horario y sede sin tocar la base de datos. Esto es clave para completar cruces de eliminatorias.
+          EditÃ¡ equipos, etapa, grupo, horario y sede sin tocar la base de datos. Esto es clave para completar cruces de eliminatorias.
         </p>
       </div>
 
@@ -631,7 +691,7 @@ function FixtureAdmin({
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar partido, equipo, sede o número"
+          placeholder="Buscar partido, equipo, sede o nÃºmero"
           className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-emerald-300"
         />
 
@@ -660,7 +720,7 @@ function FixtureAdmin({
       </div>
 
       <div className="text-sm text-slate-300">
-        Mostrando <strong className="text-white">{filteredMatches.length}</strong> partidos para edición.
+        Mostrando <strong className="text-white">{filteredMatches.length}</strong> partidos para ediciÃ³n.
       </div>
 
       <div className="grid gap-3">
@@ -720,11 +780,11 @@ function FixtureRow({
     }
 
     if (homeTeamId && awayTeamId && homeTeamId === awayTeamId) {
-      onError('Local y visitante no pueden ser la misma selección.');
+      onError('Local y visitante no pueden ser la misma selecciÃ³n.');
       return;
     }
 
-    if (!window.confirm(`Vas a modificar el fixture del partido #${match.match_order}. ¿Continuar?`)) {
+    if (!window.confirm(`Vas a modificar el fixture del partido #${match.match_order}. Â¿Continuar?`)) {
       return;
     }
 
@@ -772,16 +832,16 @@ function FixtureRow({
 
       <div className="mb-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-3">
         <div className="rounded-xl bg-slate-950/40 px-3 py-2">
-          <span className="block font-bold uppercase text-slate-500">Última sync</span>
+          <span className="block font-bold uppercase text-slate-500">Ãšltima sync</span>
           <span className="text-slate-200">{match.last_synced_at ? formatDateTime(match.last_synced_at) : 'Nunca'}</span>
         </div>
         <div className="rounded-xl bg-slate-950/40 px-3 py-2">
           <span className="block font-bold uppercase text-slate-500">Proveedor</span>
-          <span className="text-slate-200">{match.external_provider || '—'}</span>
+          <span className="text-slate-200">{match.external_provider || 'â€”'}</span>
         </div>
         <div className="rounded-xl bg-slate-950/40 px-3 py-2">
           <span className="block font-bold uppercase text-slate-500">ID externo</span>
-          <span className="text-slate-200">{match.external_match_id || '—'}</span>
+          <span className="text-slate-200">{match.external_match_id || 'â€”'}</span>
         </div>
       </div>
 
@@ -810,7 +870,7 @@ function FixtureRow({
           <input
             value={groupName}
             onChange={(event) => setGroupName(event.target.value.toUpperCase())}
-            placeholder="A, B, C... o vacío"
+            placeholder="A, B, C... o vacÃ­o"
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 outline-none focus:border-emerald-300"
           />
         </label>
@@ -869,7 +929,7 @@ function TeamSelect({ value, teams, onChange }: { value: string; teams: Team[]; 
       <option value="">Equipo por definir</option>
       {teams.map((team) => (
         <option key={team.id} value={team.id}>
-          {team.group_name ? `Grupo ${team.group_name} · ` : ''}{team.name}
+          {team.group_name ? `Grupo ${team.group_name} Â· ` : ''}{team.name}
         </option>
       ))}
     </select>
@@ -936,11 +996,11 @@ function TournamentResultsAdmin({
 
     const selected = [championTeamId, runnerUpTeamId, thirdPlaceTeamId, fourthPlaceTeamId].filter(Boolean);
     if (new Set(selected).size !== selected.length) {
-      onError('Las posiciones finales no pueden repetir selección.');
+      onError('Las posiciones finales no pueden repetir selecciÃ³n.');
       return;
     }
 
-    if (!window.confirm('Vas a guardar las posiciones finales del torneo y recalcular bonus especiales. ¿Continuar?')) {
+    if (!window.confirm('Vas a guardar las posiciones finales del torneo y recalcular bonus especiales. Â¿Continuar?')) {
       return;
     }
 
@@ -968,16 +1028,16 @@ function TournamentResultsAdmin({
     <section className="rounded-3xl border border-white/10 bg-white/10 p-5">
       <h2 className="text-2xl font-black text-emerald-300">Resultados finales del torneo</h2>
       <p className="mt-1 text-sm text-slate-300">
-        Cuando termine el Mundial, cargá campeón, subcampeón, tercero y cuarto. Al guardar, se recalculan los bonus especiales del ranking.
+        Cuando termine el Mundial, cargÃ¡ campeÃ³n, subcampeÃ³n, tercero y cuarto. Al guardar, se recalculan los bonus especiales del ranking.
       </p>
 
       <form onSubmit={save} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="space-y-2">
-          <span className="block text-xs font-bold uppercase text-slate-400">Campeón</span>
+          <span className="block text-xs font-bold uppercase text-slate-400">CampeÃ³n</span>
           <TeamSelect value={championTeamId} teams={teams} onChange={setChampionTeamId} />
         </label>
         <label className="space-y-2">
-          <span className="block text-xs font-bold uppercase text-slate-400">Subcampeón</span>
+          <span className="block text-xs font-bold uppercase text-slate-400">SubcampeÃ³n</span>
           <TeamSelect value={runnerUpTeamId} teams={teams} onChange={setRunnerUpTeamId} />
         </label>
         <label className="space-y-2">
@@ -1022,7 +1082,7 @@ function RulesForm({
     onMessage('');
     onError('');
 
-    if (!window.confirm('Vas a guardar reglas de puntuación y recalcular puntos. ¿Continuar?')) return;
+    if (!window.confirm('Vas a guardar reglas de puntuaciÃ³n y recalcular puntos. Â¿Continuar?')) return;
 
     try {
       await api('/admin/scoring-rules', { method: 'PUT', body: values as unknown as Record<string, unknown> });
@@ -1039,7 +1099,7 @@ function RulesForm({
 
   return (
     <section className="rounded-3xl border border-white/10 bg-white/10 p-5">
-      <h2 className="text-2xl font-black text-emerald-300">Reglas de puntuación</h2>
+      <h2 className="text-2xl font-black text-emerald-300">Reglas de puntuaciÃ³n</h2>
       <form onSubmit={save} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {(Object.keys(values) as Array<keyof ScoringRules>).map((key) => (
           <label key={key} className="space-y-2">
@@ -1086,12 +1146,12 @@ function UsersAdmin({
     const newPassword = (passwords[user.id] || '').trim();
 
     if (newPassword.length < 8) {
-      onError('La contraseña temporal debe tener al menos 8 caracteres.');
+      onError('La contraseÃ±a temporal debe tener al menos 8 caracteres.');
       return;
     }
 
     const confirmed = window.confirm(
-      `Vas a resetear la contraseña de ${user.name}. El usuario deberá entrar con esta clave temporal y luego podrá cambiarla desde Mi cuenta. ¿Continuar?`
+      `Vas a resetear la contraseÃ±a de ${user.name}. El usuario deberÃ¡ entrar con esta clave temporal y luego podrÃ¡ cambiarla desde Mi cuenta. Â¿Continuar?`
     );
 
     if (!confirmed) return;
@@ -1105,9 +1165,9 @@ function UsersAdmin({
 
       setPasswords((current) => ({ ...current, [user.id]: '' }));
       await onSaved();
-      onMessage(`Contraseña reseteada para ${user.name}. Sus sesiones activas fueron cerradas.`);
+      onMessage(`ContraseÃ±a reseteada para ${user.name}. Sus sesiones activas fueron cerradas.`);
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'No se pudo resetear la contraseña.');
+      onError(err instanceof Error ? err.message : 'No se pudo resetear la contraseÃ±a.');
     } finally {
       setResettingUserId(null);
     }
@@ -1118,7 +1178,7 @@ function UsersAdmin({
       <div>
         <h2 className="text-2xl font-black text-emerald-300">Usuarios</h2>
         <p className="mt-1 text-sm text-slate-300">
-          Desde acá podés resetear la contraseña de usuarios comunes. Las sesiones activas del usuario se cierran automáticamente.
+          Desde acÃ¡ podÃ©s resetear la contraseÃ±a de usuarios comunes. Las sesiones activas del usuario se cierran automÃ¡ticamente.
         </p>
       </div>
 
@@ -1191,7 +1251,7 @@ function SyncLogsAdmin({
     <section className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-2xl font-black text-emerald-300">Sincronización de resultados</h2>
+          <h2 className="text-2xl font-black text-emerald-300">SincronizaciÃ³n de resultados</h2>
           <p className="mt-1 text-sm text-slate-300">
             Por defecto se muestran solo sincronizaciones con cambios, partidos sin matchear o errores. Las sincronizaciones sin novedades quedan ocultas para no llenar la tabla de ruido.
           </p>
@@ -1204,7 +1264,7 @@ function SyncLogsAdmin({
             onChange={(event) => onIncludeNoChangesChange(event.target.checked)}
             className="h-4 w-4 accent-emerald-300"
           />
-          Mostrar también sincronizaciones sin cambios
+          Mostrar tambiÃ©n sincronizaciones sin cambios
         </label>
       </div>
 
@@ -1215,7 +1275,7 @@ function SyncLogsAdmin({
               <tr>
                 <th className="px-4 py-3">Fecha</th>
                 <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3 text-right">Leídos</th>
+                <th className="px-4 py-3 text-right">LeÃ­dos</th>
                 <th className="px-4 py-3 text-right">Finalizados</th>
                 <th className="px-4 py-3 text-right">Actualizados</th>
                 <th className="px-4 py-3 text-right">Saltados</th>
@@ -1246,7 +1306,7 @@ function SyncLogsAdmin({
                     <td className="px-4 py-3 text-right font-bold">{log.skipped_count}</td>
                     <td className="px-4 py-3 text-right font-bold">{log.unmatched_count}</td>
                     <td className="max-w-[360px] px-4 py-3 text-slate-300"><SyncLogDetail log={log} /></td>
-                    <td className="max-w-[280px] px-4 py-3 text-slate-300">{log.error_message || '—'}</td>
+                    <td className="max-w-[280px] px-4 py-3 text-slate-300">{log.error_message || 'â€”'}</td>
                   </tr>
                 ))
               )}
@@ -1263,7 +1323,7 @@ function SyncLogsAdmin({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-bold text-white">{formatDateTime(log.created_at)}</div>
-                    <div className="mt-1 text-xs text-slate-400">{log.provider} · {log.competition_code} {log.season}</div>
+                    <div className="mt-1 text-xs text-slate-400">{log.provider} Â· {log.competition_code} {log.season}</div>
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-black ${log.status === 'SUCCESS' ? 'bg-emerald-400 text-slate-950' : 'bg-red-400 text-white'}`}>
                     {log.status === 'SUCCESS' ? 'OK' : 'Error'}
@@ -1271,7 +1331,7 @@ function SyncLogsAdmin({
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-2 text-center text-sm">
-                  <SmallSyncStat label="Leídos" value={log.fetched_count} />
+                  <SmallSyncStat label="LeÃ­dos" value={log.fetched_count} />
                   <SmallSyncStat label="Finalizados" value={log.finished_count} />
                   <SmallSyncStat label="Actualizados" value={log.updated_count} />
                   <SmallSyncStat label="Saltados" value={log.skipped_count} />
@@ -1350,7 +1410,7 @@ function SyncLogDetail({ log }: { log: ResultSyncLog }) {
                 #{match.match_order} {match.home_team} {match.home_score}-{match.away_score} {match.away_team}
               </li>
             ))}
-            {detail.updated_matches.length > 4 && <li>+{detail.updated_matches.length - 4} más</li>}
+            {detail.updated_matches.length > 4 && <li>+{detail.updated_matches.length - 4} mÃ¡s</li>}
           </ul>
         </div>
       )}
@@ -1364,7 +1424,7 @@ function SyncLogDetail({ log }: { log: ResultSyncLog }) {
                 Ext. {match.external_match_id}: {match.home_team || 'Local'} {match.home_score}-{match.away_score} {match.away_team || 'Visitante'}
               </li>
             ))}
-            {detail.unmatched_matches.length > 4 && <li>+{detail.unmatched_matches.length - 4} más</li>}
+            {detail.unmatched_matches.length > 4 && <li>+{detail.unmatched_matches.length - 4} mÃ¡s</li>}
           </ul>
         </div>
       )}
@@ -1385,9 +1445,9 @@ function AuditLogsAdmin({ logs }: { logs: AdminAuditLog[] }) {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-2xl font-black text-emerald-300">Auditoría admin</h2>
+        <h2 className="text-2xl font-black text-emerald-300">AuditorÃ­a admin</h2>
         <p className="mt-1 text-sm text-slate-300">
-          Últimas acciones sensibles realizadas desde el panel administrador.
+          Ãšltimas acciones sensibles realizadas desde el panel administrador.
         </p>
       </div>
 
@@ -1397,7 +1457,7 @@ function AuditLogsAdmin({ logs }: { logs: AdminAuditLog[] }) {
             <tr>
               <th className="px-4 py-3">Fecha</th>
               <th className="px-4 py-3">Admin</th>
-              <th className="px-4 py-3">Acción</th>
+              <th className="px-4 py-3">AcciÃ³n</th>
               <th className="px-4 py-3">Entidad</th>
             </tr>
           </thead>
@@ -1405,7 +1465,7 @@ function AuditLogsAdmin({ logs }: { logs: AdminAuditLog[] }) {
             {logs.length === 0 ? (
               <tr>
                 <td className="px-4 py-4 text-slate-400" colSpan={4}>
-                  Todavía no hay acciones registradas.
+                  TodavÃ­a no hay acciones registradas.
                 </td>
               </tr>
             ) : (
@@ -1464,7 +1524,7 @@ function parseSyncLogDetail(value: string | null): ParsedSyncLogDetail {
 }
 
 function formatDateTime(value: string) {
-  if (!value) return '—';
+  if (!value) return 'â€”';
   const normalized = value.includes('T') ? value : value.replace(' ', 'T');
   const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) return value;
@@ -1501,8 +1561,8 @@ function labelForRule(key: keyof ScoringRules) {
     correct_winner_points: 'Ganador',
     correct_draw_points: 'Empate',
     goal_difference_points: 'Diferencia',
-    champion_bonus_points: 'Campeón',
-    runner_up_bonus_points: 'Subcampeón',
+    champion_bonus_points: 'CampeÃ³n',
+    runner_up_bonus_points: 'SubcampeÃ³n',
     third_place_bonus_points: 'Tercero',
     fourth_place_bonus_points: 'Cuarto'
   };
@@ -1514,3 +1574,4 @@ function statusText(status: Match['status']) {
   if (status === 'LIVE') return 'En vivo';
   return 'Programado';
 }
+
