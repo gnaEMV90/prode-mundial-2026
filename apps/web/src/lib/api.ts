@@ -50,6 +50,7 @@ export type Match = {
   away_team_id: number | null;
   home_score: number | null;
   away_score: number | null;
+  winner_team_id: number | null;
   starts_at: string;
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED';
   venue: string | null;
@@ -72,6 +73,7 @@ export type Prediction = {
   match_id: number;
   home_score: number;
   away_score: number;
+  winner_team_id: number | null;
   points: number;
   exact_score_points: number;
   correct_winner_points: number;
@@ -83,6 +85,7 @@ export type Prediction = {
   status: Match['status'];
   real_home_score: number | null;
   real_away_score: number | null;
+  real_winner_team_id: number | null;
   home_team_name: string | null;
   away_team_name: string | null;
 };
@@ -166,7 +169,6 @@ export type AdminAuditLog = {
   admin_email: string | null;
 };
 
-
 export type ResultSyncSummary = {
   provider: 'FOOTBALL_DATA';
   competition_code: string;
@@ -180,16 +182,16 @@ export type ResultSyncSummary = {
     match_order: number;
     home_team: string;
     away_team: string;
-    home_score: number;
-    away_score: number;
+    home_score: number | null;
+    away_score: number | null;
   }>;
   unmatched_matches: Array<{
     external_match_id: number;
     home_team: string | null;
     away_team: string | null;
     utc_date: string;
-    home_score: number;
-    away_score: number;
+    home_score: number | null;
+    away_score: number | null;
   }>;
 };
 
