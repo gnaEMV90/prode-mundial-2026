@@ -1,4 +1,4 @@
-﻿import originalWorker from './index';
+import originalWorker from './index';
 
 type Env = { DB: D1Database; APP_ENV: string; CORS_ORIGIN: string; FOOTBALL_DATA_API_TOKEN?: string };
 type BaseWorker = { fetch: (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response> | Response };
@@ -71,6 +71,7 @@ type SyncSummary = {
   updated_count: number;
   skipped_count: number;
   unmatched_count: number;
+  propagated_count: number;
   updated_matches: Array<{ match_order: number; home_team: string; away_team: string; home_score: number | null; away_score: number | null }>;
   unmatched_matches: Array<{ external_match_id: number; home_team: string | null; away_team: string | null; utc_date: string; home_score: number | null; away_score: number | null }>;
 };
@@ -168,6 +169,7 @@ async function saveAdminResult(request: Request, env: Env, matchId: number) {
   `).bind(home, away, winner, status, matchId).run();
 
   await recalculateMatch(env.DB, matchId);
+  if (status === 'FINISHED' && winner !== null) await propagateKnockoutWinners(env.DB);
   await logAdmin(env.DB, user.id, 'UPDATE_RESULT', 'match', String(matchId), { home_score: home, away_score: away, winner_team_id: winner, status }, request);
   return json(request, env, { ok: true });
 }
@@ -195,7 +197,7 @@ async function syncFromRequest(request: Request, env: Env) {
 }
 
 async function syncFootballData(db: D1Database, token?: string): Promise<SyncSummary> {
-  const summary: SyncSummary = { provider: PROVIDER, competition_code: COMPETITION, season: SEASON, fetched_count: 0, finished_count: 0, updated_count: 0, skipped_count: 0, unmatched_count: 0, updated_matches: [], unmatched_matches: [] };
+  const summary: SyncSummary = { provider: PROVIDER, competition_code: COMPETITION, season: SEASON, fetched_count: 0, finished_count: 0, updated_count: 0, skipped_count: 0, unmatched_count: 0, propagated_count: 0, updated_matches: [], unmatched_matches: [] };
 
   try {
     if (!token) throw new Error('No estÃ¡ configurado FOOTBALL_DATA_API_TOKEN en el Worker.');
@@ -317,6 +319,12 @@ async function syncFootballData(db: D1Database, token?: string): Promise<SyncSum
       summary.updated_count += 1;
       summary.updated_matches.push(toUpdated(updated));
       if (canUpdateResult) await recalculateMatch(db, match.id);
+    }
+
+    const propagatedCount = await propagateKnockoutWinners(db);
+    if (propagatedCount > 0) {
+      summary.propagated_count = propagatedCount;
+      summary.updated_count += propagatedCount;
     }
 
     await saveSyncLog(db, summary, 'SUCCESS', null);
@@ -617,6 +625,106 @@ function isFinishedWithScore(match: FootballMatch) {
   return match.status === 'FINISHED' && Number.isInteger(match.score.fullTime?.home) && Number.isInteger(match.score.fullTime?.away);
 }
 
+type AdvancementRule = {
+  sourceOrder: number;
+  targetOrder: number;
+  slot: 'home' | 'away';
+  team: 'winner' | 'loser';
+};
+
+const ADVANCEMENT_RULES: AdvancementRule[] = [
+  { sourceOrder: 73, targetOrder: 90, slot: 'home', team: 'winner' },
+  { sourceOrder: 75, targetOrder: 90, slot: 'away', team: 'winner' },
+  { sourceOrder: 74, targetOrder: 89, slot: 'home', team: 'winner' },
+  { sourceOrder: 77, targetOrder: 89, slot: 'away', team: 'winner' },
+  { sourceOrder: 76, targetOrder: 91, slot: 'home', team: 'winner' },
+  { sourceOrder: 78, targetOrder: 91, slot: 'away', team: 'winner' },
+  { sourceOrder: 79, targetOrder: 92, slot: 'home', team: 'winner' },
+  { sourceOrder: 80, targetOrder: 92, slot: 'away', team: 'winner' },
+  { sourceOrder: 83, targetOrder: 93, slot: 'home', team: 'winner' },
+  { sourceOrder: 84, targetOrder: 93, slot: 'away', team: 'winner' },
+  { sourceOrder: 81, targetOrder: 94, slot: 'home', team: 'winner' },
+  { sourceOrder: 82, targetOrder: 94, slot: 'away', team: 'winner' },
+  { sourceOrder: 86, targetOrder: 95, slot: 'home', team: 'winner' },
+  { sourceOrder: 88, targetOrder: 95, slot: 'away', team: 'winner' },
+  { sourceOrder: 85, targetOrder: 96, slot: 'home', team: 'winner' },
+  { sourceOrder: 87, targetOrder: 96, slot: 'away', team: 'winner' },
+
+  { sourceOrder: 90, targetOrder: 97, slot: 'home', team: 'winner' },
+  { sourceOrder: 89, targetOrder: 97, slot: 'away', team: 'winner' },
+  { sourceOrder: 94, targetOrder: 98, slot: 'home', team: 'winner' },
+  { sourceOrder: 91, targetOrder: 98, slot: 'away', team: 'winner' },
+  { sourceOrder: 92, targetOrder: 99, slot: 'home', team: 'winner' },
+  { sourceOrder: 93, targetOrder: 99, slot: 'away', team: 'winner' },
+  { sourceOrder: 96, targetOrder: 100, slot: 'home', team: 'winner' },
+  { sourceOrder: 95, targetOrder: 100, slot: 'away', team: 'winner' },
+
+  { sourceOrder: 97, targetOrder: 101, slot: 'home', team: 'winner' },
+  { sourceOrder: 98, targetOrder: 101, slot: 'away', team: 'winner' },
+  { sourceOrder: 99, targetOrder: 102, slot: 'home', team: 'winner' },
+  { sourceOrder: 100, targetOrder: 102, slot: 'away', team: 'winner' },
+
+  { sourceOrder: 101, targetOrder: 104, slot: 'home', team: 'winner' },
+  { sourceOrder: 102, targetOrder: 104, slot: 'away', team: 'winner' },
+  { sourceOrder: 101, targetOrder: 103, slot: 'home', team: 'loser' },
+  { sourceOrder: 102, targetOrder: 103, slot: 'away', team: 'loser' }
+];
+
+async function propagateKnockoutWinners(db: D1Database) {
+  const rows = await db.prepare(`
+    SELECT id, stage, group_name, home_team_id, away_team_id, home_score, away_score, winner_team_id, starts_at, status, venue, match_order, external_provider, external_match_id, result_source, manually_locked
+    FROM matches
+    WHERE match_order BETWEEN 73 AND 104
+    ORDER BY match_order ASC
+  `).all<Match>();
+
+  const byOrder = new Map(rows.results.map((match) => [match.match_order, match]));
+  let updates = 0;
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (const rule of ADVANCEMENT_RULES) {
+      const source = byOrder.get(rule.sourceOrder);
+      const target = byOrder.get(rule.targetOrder);
+      if (!source || !target || target.status === 'FINISHED') continue;
+
+      const teamId = resolveAdvancedTeamId(source, rule.team);
+      if (teamId === null) continue;
+
+      const currentTeamId = rule.slot === 'home' ? target.home_team_id : target.away_team_id;
+      if (currentTeamId === teamId) continue;
+      if (currentTeamId !== null && !isTeamFromSource(currentTeamId, source)) continue;
+
+      const field = rule.slot === 'home' ? 'home_team_id' : 'away_team_id';
+      await db.prepare(`UPDATE matches SET ${field} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(teamId, target.id).run();
+
+      if (rule.slot === 'home') target.home_team_id = teamId;
+      else target.away_team_id = teamId;
+
+      updates += 1;
+      changed = true;
+    }
+  }
+
+  return updates;
+}
+
+function resolveAdvancedTeamId(match: Match, team: 'winner' | 'loser') {
+  if (match.status !== 'FINISHED' || match.winner_team_id === null) return null;
+  if (team === 'winner') return match.winner_team_id;
+
+  if (match.home_team_id !== null && match.home_team_id !== match.winner_team_id) return match.home_team_id;
+  if (match.away_team_id !== null && match.away_team_id !== match.winner_team_id) return match.away_team_id;
+
+  return null;
+}
+
+function isTeamFromSource(teamId: number, match: Match) {
+  return match.home_team_id === teamId || match.away_team_id === teamId;
+}
+
 function mapStatus(status: string): Match['status'] {
   const value = status.toUpperCase();
   if (['IN_PLAY', 'PAUSED', 'LIVE'].includes(value)) return 'LIVE';
@@ -685,7 +793,7 @@ function toUnmatched(match: FootballMatch) {
 
 async function saveSyncLog(db: D1Database, summary: SyncSummary, status: 'SUCCESS' | 'ERROR', errorMessage: string | null) {
   await db.prepare('INSERT INTO result_sync_logs (provider, competition_code, season, status, fetched_count, finished_count, updated_count, skipped_count, unmatched_count, detail, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(summary.provider, summary.competition_code, summary.season, status, summary.fetched_count, summary.finished_count, summary.updated_count, summary.skipped_count, summary.unmatched_count, JSON.stringify({ updated_matches: summary.updated_matches, unmatched_matches: summary.unmatched_matches }), errorMessage)
+    .bind(summary.provider, summary.competition_code, summary.season, status, summary.fetched_count, summary.finished_count, summary.updated_count, summary.skipped_count, summary.unmatched_count, JSON.stringify({ updated_matches: summary.updated_matches, unmatched_matches: summary.unmatched_matches, propagated_count: summary.propagated_count }), errorMessage)
     .run();
 }
 
