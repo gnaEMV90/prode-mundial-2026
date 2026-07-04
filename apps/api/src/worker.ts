@@ -1,4 +1,4 @@
-import originalWorker from './index';
+﻿import originalWorker from './index';
 
 type Env = { DB: D1Database; APP_ENV: string; CORS_ORIGIN: string; FOOTBALL_DATA_API_TOKEN?: string };
 type BaseWorker = { fetch: (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response> | Response };
@@ -84,14 +84,15 @@ const SEASON = 2026;
 export default {
   fetch: async (request: Request, env: Env, ctx: ExecutionContext) => {
     const url = new URL(request.url);
-    const predictionMatch = url.pathname.match(/^\/predictions\/(\d+)$/);
-    const adminResultMatch = url.pathname.match(/^\/admin\/matches\/(\d+)\/result$/);
+    const pathname = url.pathname.startsWith('/api/') ? url.pathname.slice(4) : url.pathname;
+    const predictionMatch = pathname.match(/^\/predictions\/(\d+)$/);
+    const adminResultMatch = pathname.match(/^\/admin\/matches\/(\d+)\/result$/);
 
     if (predictionMatch && request.method === 'PUT') return savePrediction(request, env, Number(predictionMatch[1]));
     if (adminResultMatch && request.method === 'POST') return saveAdminResult(request, env, Number(adminResultMatch[1]));
-    if (url.pathname === '/admin/recalculate' && request.method === 'POST') return recalculateAllFromRequest(request, env);
-    if (url.pathname === '/admin/sync-results' && request.method === 'POST') return syncFromRequest(request, env);
-    if (url.pathname === '/ranking' && request.method === 'GET') return getRanking(request, env);
+    if (pathname === '/admin/recalculate' && request.method === 'POST') return recalculateAllFromRequest(request, env);
+    if (pathname === '/admin/sync-results' && request.method === 'POST') return syncFromRequest(request, env);
+    if (pathname === '/ranking' && request.method === 'GET') return getRanking(request, env);
 
     return base.fetch(request, env, ctx);
   },
@@ -100,27 +101,27 @@ export default {
     try {
       await syncFootballData(env.DB, env.FOOTBALL_DATA_API_TOKEN);
     } catch (error) {
-      console.error('No se pudo sincronizar resultados automáticamente.', error);
+      console.error('No se pudo sincronizar resultados automÃ¡ticamente.', error);
     }
   }
 };
 
 async function savePrediction(request: Request, env: Env, matchId: number) {
   const user = await getUser(request, env.DB);
-  if (!user) return json(request, env, { error: 'Tenés que iniciar sesión.' }, 401);
+  if (!user) return json(request, env, { error: 'TenÃ©s que iniciar sesiÃ³n.' }, 401);
 
   if ((await getSetting(env.DB, 'PREDICTIONS_LOCKED')) === 'true') {
-    return json(request, env, { error: 'La carga de pronósticos está bloqueada temporalmente.' }, 400);
+    return json(request, env, { error: 'La carga de pronÃ³sticos estÃ¡ bloqueada temporalmente.' }, 400);
   }
 
   const body = await readJson(request);
   const home = toScore(body.home_score);
   const away = toScore(body.away_score);
-  if (home === null || away === null) return json(request, env, { error: 'Resultado inválido.' }, 400);
+  if (home === null || away === null) return json(request, env, { error: 'Resultado invÃ¡lido.' }, 400);
 
   const match = await env.DB.prepare('SELECT * FROM matches WHERE id = ?').bind(matchId).first<Match>();
-  if (!match) return json(request, env, { error: 'No se encontró el partido.' }, 404);
-  if (isMatchLocked(match)) return json(request, env, { error: 'Este partido ya empezó o está finalizado. No se puede modificar el pronóstico.' }, 400);
+  if (!match) return json(request, env, { error: 'No se encontrÃ³ el partido.' }, 404);
+  if (isMatchLocked(match)) return json(request, env, { error: 'Este partido ya empezÃ³ o estÃ¡ finalizado. No se puede modificar el pronÃ³stico.' }, 400);
 
   const winner = normalizePredictionWinner(match, home, away, toNullableNumber(body.winner_team_id));
   if (winner instanceof Error) return json(request, env, { error: winner.message }, 400);
@@ -152,10 +153,10 @@ async function saveAdminResult(request: Request, env: Env, matchId: number) {
   const home = toScore(body.home_score);
   const away = toScore(body.away_score);
   const status = typeof body.status === 'string' && ['SCHEDULED', 'LIVE', 'FINISHED'].includes(body.status) ? body.status as Match['status'] : 'FINISHED';
-  if (home === null || away === null) return json(request, env, { error: 'Resultado inválido.' }, 400);
+  if (home === null || away === null) return json(request, env, { error: 'Resultado invÃ¡lido.' }, 400);
 
   const match = await env.DB.prepare('SELECT * FROM matches WHERE id = ?').bind(matchId).first<Match>();
-  if (!match) return json(request, env, { error: 'No se encontró el partido.' }, 404);
+  if (!match) return json(request, env, { error: 'No se encontrÃ³ el partido.' }, 404);
 
   const winner = normalizeResultWinner(match, home, away, status, toNullableNumber(body.winner_team_id));
   if (winner instanceof Error) return json(request, env, { error: winner.message }, 400);
@@ -197,7 +198,7 @@ async function syncFootballData(db: D1Database, token?: string): Promise<SyncSum
   const summary: SyncSummary = { provider: PROVIDER, competition_code: COMPETITION, season: SEASON, fetched_count: 0, finished_count: 0, updated_count: 0, skipped_count: 0, unmatched_count: 0, updated_matches: [], unmatched_matches: [] };
 
   try {
-    if (!token) throw new Error('No está configurado FOOTBALL_DATA_API_TOKEN en el Worker.');
+    if (!token) throw new Error('No estÃ¡ configurado FOOTBALL_DATA_API_TOKEN en el Worker.');
     const externalMatches = await fetchFootballMatches(token);
     summary.fetched_count = externalMatches.length;
     summary.finished_count = externalMatches.filter(isFinishedWithScore).length;
@@ -329,7 +330,7 @@ async function syncFootballData(db: D1Database, token?: string): Promise<SyncSum
 
 async function fetchFootballMatches(token: string) {
   const response = await fetch(`https://api.football-data.org/v4/competitions/${COMPETITION}/matches?season=${SEASON}`, { headers: { 'X-Auth-Token': token } });
-  if (!response.ok) throw new Error(`football-data.org respondió ${response.status}.`);
+  if (!response.ok) throw new Error(`football-data.org respondiÃ³ ${response.status}.`);
   const payload = await response.json() as FootballResponse;
   return Array.isArray(payload.matches) ? payload.matches : [];
 }
@@ -572,8 +573,8 @@ function resolveOutcome(home: number, away: number, winnerTeamId: number | null,
 
 function normalizePredictionWinner(match: Match, home: number, away: number, winner: number | null): number | null | Error {
   if (home !== away || !isKnockout(match)) return null;
-  if (!match.home_team_id || !match.away_team_id) return new Error('Todavía no están definidos los equipos para elegir ganador.');
-  if (!winner) return new Error('Si pronosticás empate en una eliminatoria, elegí quién clasifica/gana por penales.');
+  if (!match.home_team_id || !match.away_team_id) return new Error('TodavÃ­a no estÃ¡n definidos los equipos para elegir ganador.');
+  if (!winner) return new Error('Si pronosticÃ¡s empate en una eliminatoria, elegÃ­ quiÃ©n clasifica/gana por penales.');
   if (![match.home_team_id, match.away_team_id].includes(winner)) return new Error('El ganador debe ser uno de los dos equipos del partido.');
   return winner;
 }
@@ -584,7 +585,7 @@ function normalizeResultWinner(match: Match, home: number, away: number, status:
   if (away > home) return match.away_team_id;
   if (!isKnockout(match)) return null;
   if (!match.home_team_id || !match.away_team_id) return new Error('No se puede definir ganador porque faltan equipos en el partido.');
-  if (!winner) return new Error('Si el resultado real termina empatado en una eliminatoria, elegí quién ganó por penales.');
+  if (!winner) return new Error('Si el resultado real termina empatado en una eliminatoria, elegÃ­ quiÃ©n ganÃ³ por penales.');
   if (![match.home_team_id, match.away_team_id].includes(winner)) return new Error('El ganador debe ser uno de los dos equipos del partido.');
   return winner;
 }
@@ -709,7 +710,7 @@ async function logAdmin(db: D1Database, userId: number, action: string, entityTy
   try {
     await db.prepare('INSERT INTO admin_audit_logs (admin_user_id, action, entity_type, entity_id, detail, ip) VALUES (?, ?, ?, ?, ?, ?)').bind(userId, action, entityType, entityId, JSON.stringify(detail), getClientIp(request)).run();
   } catch (error) {
-    console.warn('No se pudo registrar auditoría admin.', error);
+    console.warn('No se pudo registrar auditorÃ­a admin.', error);
   }
 }
 
@@ -755,3 +756,4 @@ function json(request: Request, env: Env, payload: unknown, status = 200) {
   }
   return new Response(JSON.stringify(payload), { status, headers });
 }
+

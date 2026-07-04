@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+﻿import type { ReactNode } from 'react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, Match, Prediction } from '../lib/api';
 import { Message } from '../components/Message';
@@ -89,7 +89,7 @@ export function MyPredictions() {
     const away = Number(values.away_score);
 
     if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0) {
-      setError('Cargá un resultado válido.');
+      setError('CargÃ¡ un resultado vÃ¡lido.');
       return;
     }
 
@@ -106,9 +106,9 @@ export function MyPredictions() {
       });
 
       await load();
-      setMessage('Pronóstico guardado.');
+      setMessage('PronÃ³stico guardado.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar el pronóstico.');
+      setError(err instanceof Error ? err.message : 'No se pudo guardar el pronÃ³stico.');
     }
   }
 
@@ -186,9 +186,9 @@ export function MyPredictions() {
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-white/10 bg-white/10 p-5">
-        <h1 className="text-3xl font-black">Mis pronósticos</h1>
+        <h1 className="text-3xl font-black">Mis pronÃ³sticos</h1>
         <p className="mt-2 text-sm leading-6 text-slate-300 sm:text-base">
-          Por defecto te mostramos solo los partidos que todavía podés cargar o revisar antes de que arranquen. En eliminatorias, si pronosticás empate, también tenés que elegir quién clasifica o gana por penales.
+          Por defecto te mostramos solo los partidos que todavÃ­a podÃ©s cargar o revisar antes de que arranquen. En eliminatorias, si pronosticÃ¡s empate, tambiÃ©n tenÃ©s que elegir quiÃ©n clasifica o gana por penales.
         </p>
       </section>
 
@@ -205,7 +205,7 @@ export function MyPredictions() {
           <div>
             <h2 className="text-lg font-black text-white">Partidos pendientes y en vivo</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Mostrando lo importante para cargar rápido y sin hacer scroll hasta Qatar 2010.
+              Mostrando lo importante para cargar rÃ¡pido y sin hacer scroll hasta Qatar 2010.
             </p>
           </div>
 
@@ -238,7 +238,7 @@ export function MyPredictions() {
           <div>
             <h2 className="text-lg font-black text-white">Partidos finalizados</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Están ocultos por defecto. Podés abrirlos para revisar puntos y motivos cuando haga falta.
+              EstÃ¡n ocultos por defecto. PodÃ©s abrirlos para revisar puntos y motivos cuando haga falta.
             </p>
           </div>
 
@@ -256,7 +256,7 @@ export function MyPredictions() {
             {finishedMatches.length > 0 ? (
               finishedMatches.map((match) => renderPredictionCard(match, true))
             ) : (
-              <div className="rounded-2xl bg-slate-950/40 p-4 text-sm text-slate-400">Todavía no hay partidos finalizados.</div>
+              <div className="rounded-2xl bg-slate-950/40 p-4 text-sm text-slate-400">TodavÃ­a no hay partidos finalizados.</div>
             )}
           </div>
         )}
@@ -311,7 +311,7 @@ function PredictionMatchHeader({ match, locked, historical }: { match: Match; lo
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-xs uppercase tracking-wide text-slate-400">
-            Partido #{match.match_order} · {match.group_name ? `Grupo ${match.group_name}` : match.stage}
+            Partido #{match.match_order} Â· {match.group_name ? `Grupo ${match.group_name}` : match.stage}
           </div>
           <div className="mt-1 text-sm font-bold text-slate-200">{date}</div>
           <div className="mt-1 text-xs text-slate-400">{match.venue || 'Sede por definir'}</div>
@@ -320,7 +320,7 @@ function PredictionMatchHeader({ match, locked, historical }: { match: Match; lo
         <div className="flex flex-wrap gap-2">
           <StatusBadge tone={statusTone(match.status)}>{statusText(match.status)}</StatusBadge>
           {match.status === 'LIVE' && <StatusBadge tone="live">Cerrado en vivo</StatusBadge>}
-          {locked && match.status !== 'LIVE' && <StatusBadge tone={historical ? 'finished' : 'locked'}>{historical ? 'Histórico' : 'Bloqueado'}</StatusBadge>}
+          {locked && match.status !== 'LIVE' && <StatusBadge tone={historical ? 'finished' : 'locked'}>{historical ? 'HistÃ³rico' : 'Bloqueado'}</StatusBadge>}
         </div>
       </div>
 
@@ -338,7 +338,7 @@ function PredictionMatchHeader({ match, locked, historical }: { match: Match; lo
           </div>
           {match.home_score === match.away_score && match.winner_team_id && (
             <div className="mt-1 text-xs font-bold text-emerald-200">
-              Ganó por penales: {teamNameById(match, match.winner_team_id)}
+              GanÃ³ por penales: {teamNameById(match, match.winner_team_id)}
             </div>
           )}
         </div>
@@ -394,7 +394,7 @@ function WinnerSelector({
   return (
     <label className="block rounded-2xl border border-amber-300/20 bg-amber-400/10 p-3">
       <span className="text-xs font-black uppercase tracking-wide text-amber-100">
-        Empate en eliminatoria: ¿quién clasifica/gana por penales?
+        Empate en eliminatoria: Â¿quiÃ©n clasifica/gana por penales?
       </span>
       <select
         value={value}
@@ -402,7 +402,7 @@ function WinnerSelector({
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-black text-white outline-none focus:border-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
       >
-        <option value="">Elegí ganador</option>
+        <option value="">ElegÃ­ ganador</option>
         {match.home_team_id && <option value={String(match.home_team_id)}>{match.home_team_name || 'Local'}</option>}
         {match.away_team_id && <option value={String(match.away_team_id)}>{match.away_team_name || 'Visitante'}</option>}
       </select>
@@ -412,14 +412,14 @@ function WinnerSelector({
 
 function PredictionPointsPill({ prediction, match }: { prediction: Prediction | undefined; match: Match }) {
   if (!prediction) {
-    return <span className="text-sm text-slate-400">Sin pronóstico cargado</span>;
+    return <span className="text-sm text-slate-400">Sin pronÃ³stico cargado</span>;
   }
 
   if (match.status !== 'FINISHED') {
     return (
       <span className="w-fit rounded-full bg-slate-900 px-3 py-1 text-sm font-bold text-slate-300">
-        Pronóstico: {prediction.home_score} - {prediction.away_score}
-        {prediction.winner_team_id && prediction.home_score === prediction.away_score ? ` · pasa ${teamNameById(match, prediction.winner_team_id)}` : ''}
+        PronÃ³stico: {prediction.home_score} - {prediction.away_score}
+        {prediction.winner_team_id && prediction.home_score === prediction.away_score ? ` Â· pasa ${teamNameById(match, prediction.winner_team_id)}` : ''}
       </span>
     );
   }
@@ -452,7 +452,7 @@ function PredictionDetail({
     if (match.status === 'FINISHED') {
       return (
         <div className="mt-3 rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-3 text-sm text-slate-400">
-          No cargaste pronóstico para este partido.
+          No cargaste pronÃ³stico para este partido.
         </div>
       );
     }
@@ -463,7 +463,7 @@ function PredictionDetail({
   if (match.status !== 'FINISHED' || realHome === null || realAway === null) {
     return (
       <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-400">
-        Resultado real pendiente. El partido ya está bloqueado cuando empieza, aunque todavía aparezca acá.
+        Resultado real pendiente. El partido ya estÃ¡ bloqueado cuando empieza, aunque todavÃ­a aparezca acÃ¡.
       </div>
     );
   }
@@ -471,7 +471,7 @@ function PredictionDetail({
   return (
     <div className={`mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 ${historical ? 'opacity-95' : ''}`}>
       <div className="grid gap-3 text-sm sm:grid-cols-3">
-        <ScoreLine label="Tu pronóstico" home={prediction.home_score} away={prediction.away_score} winner={prediction.winner_team_id ? teamNameById(match, prediction.winner_team_id) : null} />
+        <ScoreLine label="Tu pronÃ³stico" home={prediction.home_score} away={prediction.away_score} winner={prediction.winner_team_id ? teamNameById(match, prediction.winner_team_id) : null} />
         <ScoreLine label="Resultado real" home={realHome} away={realAway} winner={realWinner ? teamNameById(match, realWinner) : null} />
 
         <div>
@@ -592,12 +592,12 @@ function getWinnerTeamIdForPayload(match: Match, home: number, away: number, raw
   if (home !== away || !isKnockoutMatch(match)) return null;
 
   if (!match.home_team_id || !match.away_team_id) {
-    return new Error('Todavía no están definidos los equipos para elegir ganador.');
+    return new Error('TodavÃ­a no estÃ¡n definidos los equipos para elegir ganador.');
   }
 
   const winner = Number(rawWinner);
   if (!Number.isInteger(winner) || ![match.home_team_id, match.away_team_id].includes(winner)) {
-    return new Error('Si pronosticás empate en una eliminatoria, elegí quién clasifica/gana por penales.');
+    return new Error('Si pronosticÃ¡s empate en una eliminatoria, elegÃ­ quiÃ©n clasifica/gana por penales.');
   }
 
   return winner;
@@ -607,16 +607,7 @@ function isKnockoutMatch(match: Match) {
   if (match.group_name) return false;
 
   const stage = normalizeText(match.stage);
-  if (stage.includes('grupo') || stage.includes('group')) return false;
-
-  return (
-    stage.includes('32') ||
-    stage.includes('octavos') ||
-    stage.includes('cuartos') ||
-    stage.includes('semi') ||
-    stage.includes('tercer') ||
-    stage.includes('final')
-  );
+  return !stage.includes('grupo') && !stage.includes('group');
 }
 
 function teamNameById(match: Match, teamId: number) {
@@ -631,3 +622,4 @@ function normalizeText(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 }
+
