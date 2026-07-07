@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { DonationCard } from '../components/DonationCard';
 import { useAuth } from '../lib/auth';
 
 const PUBLIC_URL = 'https://prodemundial2026-aci.pages.dev';
@@ -114,6 +115,8 @@ export function Home() {
             {PUBLIC_URL}
           </div>
         </div>
+
+        <DonationCard />
       </section>
 
       <section className="rounded-3xl border border-white/10 bg-white/10 p-6 shadow-2xl">

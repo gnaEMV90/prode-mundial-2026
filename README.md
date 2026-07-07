@@ -41,6 +41,15 @@ Crear archivo de entorno para el frontend:
 cp apps/web/.env.example apps/web/.env
 ```
 
+Variables disponibles para `apps/web/.env`:
+
+```txt
+VITE_API_URL=http://localhost:8787
+VITE_DONATION_URL=https://www.mercadopago.com.ar/...
+```
+
+`VITE_DONATION_URL` es opcional. Si queda vacío, no se muestra el bloque ni el link de donación.
+
 Aplicar migraciones locales:
 
 ```bash
@@ -104,6 +113,7 @@ Incluye MVP base:
 - Ranking público.
 - Reglas configurables.
 - Panel admin básico.
+- Botón opcional para donaciones por Mercado Pago.
 
 ## Nota sobre fixture
 

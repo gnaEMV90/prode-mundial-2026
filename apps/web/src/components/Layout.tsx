@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { DonationFooterLink } from './DonationCard';
 
 const navItems = [
   { to: '/fixture', label: 'Fixture' },
@@ -107,6 +108,9 @@ export function Layout() {
           <div>
             <div className="font-bold text-slate-200">Desarrollado por Germán Andrighetti</div>
             <div>Sistemas simples para negocios reales.</div>
+            <div className="mt-2">
+              <DonationFooterLink />
+            </div>
           </div>
 
           <div className="text-left sm:text-right">

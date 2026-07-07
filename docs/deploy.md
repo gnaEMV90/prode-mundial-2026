@@ -51,11 +51,14 @@ Configuración:
 - Build output directory: `apps/web/dist`
 - Root directory: `/`
 
-Variable de entorno en Cloudflare Pages:
+Variables de entorno en Cloudflare Pages:
 
 ```txt
 VITE_API_URL=https://URL_DEL_WORKER
+VITE_DONATION_URL=https://LINK_DE_MERCADO_PAGO
 ```
+
+`VITE_DONATION_URL` es opcional. Si no se configura, la app no muestra el bloque de donación.
 
 ## 6. Ajustar CORS en Worker
 
@@ -80,6 +83,12 @@ Entrar con:
 
 Luego se debe implementar pantalla de cambio de contraseña o cambiarla desde base. No abrir al público con esa contraseña.
 
-## 8. Dominio
+## 8. Donaciones por Mercado Pago
+
+Crear un link de pago desde Mercado Pago y copiarlo como valor de `VITE_DONATION_URL` en Cloudflare Pages.
+
+Este link no requiere integración backend, no guarda credenciales en el frontend y mantiene la app dentro del esquema de costo cero.
+
+## 9. Dominio
 
 Usar el subdominio gratuito de Cloudflare Pages. No comprar dominio para mantener costo cero.
