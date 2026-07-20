@@ -1,5 +1,5 @@
 name = "prode-mundial-2026-api"
-main = "src/worker.ts"
+main = "src/closed-worker.ts"
 compatibility_date = "2025-01-29"
 
 [vars]
@@ -11,6 +11,3 @@ binding = "DB"
 database_name = "prode_mundial_2026"
 database_id = "cffcf0cc-dd5e-4c00-891d-658d0884b27b"
 migrations_dir = "migrations"
-
-[triggers]
-crons = ["*/30 * * * *"]
