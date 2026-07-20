@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { TOURNAMENT_CLOSED } from '../lib/tournament';
 import { DonationFooterLink } from './DonationCard';
 
 const navItems = [
@@ -35,10 +36,11 @@ export function Layout() {
 
             {user && <DesktopNavLink to="/panel">Mi panel</DesktopNavLink>}
             {user && <DesktopNavLink to="/mis-pronosticos">Mis pronósticos</DesktopNavLink>}
-            {user && <DesktopNavLink to="/especiales">Especiales</DesktopNavLink>}
-            {user && <DesktopNavLink to="/cuenta">Mi cuenta</DesktopNavLink>}
 
-            {user?.role === 'ADMIN' && (
+            {!TOURNAMENT_CLOSED && user && <DesktopNavLink to="/especiales">Especiales</DesktopNavLink>}
+            {!TOURNAMENT_CLOSED && user && <DesktopNavLink to="/cuenta">Mi cuenta</DesktopNavLink>}
+
+            {!TOURNAMENT_CLOSED && user?.role === 'ADMIN' && (
               <NavLink to="/admin" className="text-sm text-amber-300 hover:text-amber-200">
                 Admin
               </NavLink>
@@ -65,12 +67,14 @@ export function Layout() {
                   Entrar
                 </Link>
 
-                <Link
-                  to="/registro"
-                  className="rounded-xl bg-emerald-400 px-3 py-2 text-sm font-bold text-slate-950 hover:bg-emerald-300"
-                >
-                  Registrarme
-                </Link>
+                {!TOURNAMENT_CLOSED && (
+                  <Link
+                    to="/registro"
+                    className="rounded-xl bg-emerald-400 px-3 py-2 text-sm font-bold text-slate-950 hover:bg-emerald-300"
+                  >
+                    Registrarme
+                  </Link>
+                )}
               </>
             )}
           </div>
@@ -85,10 +89,11 @@ export function Layout() {
 
           {user && <MobileNavLink to="/panel">Mi panel</MobileNavLink>}
           {user && <MobileNavLink to="/mis-pronosticos">Mis pronósticos</MobileNavLink>}
-          {user && <MobileNavLink to="/especiales">Especiales</MobileNavLink>}
-          {user && <MobileNavLink to="/cuenta">Mi cuenta</MobileNavLink>}
 
-          {user?.role === 'ADMIN' && (
+          {!TOURNAMENT_CLOSED && user && <MobileNavLink to="/especiales">Especiales</MobileNavLink>}
+          {!TOURNAMENT_CLOSED && user && <MobileNavLink to="/cuenta">Mi cuenta</MobileNavLink>}
+
+          {!TOURNAMENT_CLOSED && user?.role === 'ADMIN' && (
             <NavLink
               to="/admin"
               className="whitespace-nowrap rounded-full bg-amber-400 px-3 py-1 text-sm font-bold text-slate-950"
@@ -97,6 +102,12 @@ export function Layout() {
             </NavLink>
           )}
         </nav>
+
+        {TOURNAMENT_CLOSED && (
+          <div className="border-t border-amber-300/20 bg-amber-300/10 px-4 py-2 text-center text-xs font-bold text-amber-100 sm:text-sm">
+            El Prode finalizó y quedó en modo consulta. El ranking definitivo y el historial siguen disponibles.
+          </div>
+        )}
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
@@ -115,7 +126,7 @@ export function Layout() {
 
           <div className="text-left sm:text-right">
             <div>© {currentYear} Prode Mundial 2026.</div>
-            <div>Aplicación gratuita para jugar y compartir.</div>
+            <div>Archivo final del torneo y del ranking.</div>
           </div>
         </div>
       </footer>
