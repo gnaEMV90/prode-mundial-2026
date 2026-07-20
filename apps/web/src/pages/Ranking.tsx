@@ -23,17 +23,25 @@ export function Ranking() {
     return ranking.filter((row) => row.name.toLowerCase().includes(term));
   }, [ranking, search]);
 
-  const leader = ranking[0] || null;
+  const winner = ranking[0] || null;
   const totalPredictions = ranking.reduce((sum, row) => sum + Number(row.predicted_count || 0), 0);
   const totalPoints = ranking.reduce((sum, row) => sum + Number(row.points || 0), 0);
 
   return (
     <div className="space-y-6">
+      <section className="rounded-3xl border border-amber-300/30 bg-amber-300/10 p-5 sm:p-6">
+        <div className="text-sm font-black uppercase tracking-[0.2em] text-amber-100">Ranking definitivo</div>
+        <h1 className="mt-2 text-3xl font-black sm:text-4xl">Gracias a todos los participantes</h1>
+        <p className="mt-3 max-w-3xl leading-7 text-slate-300">
+          El Prode Mundial 2026 finalizó. La tabla quedó cerrada y se conserva como resultado definitivo de la competencia.
+        </p>
+      </section>
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-black">Ranking general</h1>
+          <h2 className="text-2xl font-black">Clasificación final</h2>
           <p className="mt-2 text-slate-300">
-            Ordenado por puntos totales, exactos, aciertos de ganador/empate y cantidad de pronósticos.
+            Ordenada por puntos totales, exactos, aciertos de ganador o empate y cantidad de pronósticos.
           </p>
         </div>
 
@@ -55,17 +63,18 @@ export function Ranking() {
         <RankingMetric label="Especiales cargados" value={ranking.filter((row) => Number(row.special_loaded) === 1).length} />
       </section>
 
-      {leader && (
-        <section className="rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-5">
-          <div className="text-sm font-bold uppercase tracking-wide text-emerald-200">Puntero actual</div>
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      {winner && (
+        <section className="rounded-3xl border border-emerald-400/40 bg-emerald-400/10 p-5 sm:p-6">
+          <div className="text-sm font-black uppercase tracking-[0.2em] text-emerald-200">Ganador del Prode Mundial 2026</div>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="text-3xl font-black text-white">{leader.name}</div>
-              <div className="mt-1 text-slate-300">
-                {leader.exact_hits} exactos · {leader.outcome_hits} aciertos · {leader.predicted_count} pronósticos · {leader.special_points} bonus
+              <div className="text-3xl font-black text-white sm:text-4xl">{winner.name}</div>
+              <div className="mt-2 text-slate-300">
+                {winner.exact_hits} exactos · {winner.outcome_hits} aciertos · {winner.predicted_count} pronósticos · {winner.special_points} bonus
               </div>
+              <div className="mt-3 font-bold text-emerald-100">Felicitaciones por alcanzar el primer puesto definitivo.</div>
             </div>
-            <div className="text-4xl font-black text-emerald-300">{leader.points} pts</div>
+            <div className="text-4xl font-black text-emerald-300 sm:text-5xl">{winner.points} pts</div>
           </div>
         </section>
       )}
@@ -145,9 +154,9 @@ export function Ranking() {
       </div>
 
       <section className="rounded-3xl border border-white/10 bg-white/10 p-5 text-sm text-slate-300">
-        <h2 className="font-black text-emerald-300">Criterios de desempate</h2>
+        <h2 className="font-black text-emerald-300">Criterios de desempate aplicados</h2>
         <p className="mt-2">
-          Primero puntos totales, incluyendo partidos y bonus especiales. Si hay empate: más resultados exactos, luego más aciertos de ganador/empate,
+          Primero puntos totales, incluyendo partidos y bonus especiales. Si hay empate: más resultados exactos, luego más aciertos de ganador o empate,
           luego más pronósticos cargados y finalmente fecha de registro.
         </p>
       </section>
