@@ -1,15 +1,13 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { Account } from './pages/Account';
-import { Admin } from './pages/Admin';
-import { Login, Register } from './pages/Auth';
+import { Login } from './pages/Auth';
 import { Fixture } from './pages/Fixture';
 import { Home } from './pages/Home';
 import { MyPredictions } from './pages/MyPredictions';
 import { Ranking } from './pages/Ranking';
-import { SpecialPredictions } from './pages/SpecialPredictions';
 import { Rules } from './pages/Rules';
+import { TournamentClosed } from './pages/TournamentClosed';
 import { UserPanel } from './pages/UserPanel';
 
 const router = createBrowserRouter([
@@ -22,23 +20,9 @@ const router = createBrowserRouter([
       { path: 'ranking', element: <Ranking /> },
       { path: 'reglas', element: <Rules /> },
       { path: 'login', element: <Login /> },
-      { path: 'registro', element: <Register /> },
-      {
-        path: 'especiales',
-        element: (
-          <ProtectedRoute>
-            <SpecialPredictions />
-          </ProtectedRoute>
-        )
-      },
-      {
-        path: 'cuenta',
-        element: (
-          <ProtectedRoute>
-            <Account />
-          </ProtectedRoute>
-        )
-      },
+      { path: 'registro', element: <TournamentClosed /> },
+      { path: 'especiales', element: <TournamentClosed /> },
+      { path: 'cuenta', element: <TournamentClosed /> },
       {
         path: 'panel',
         element: (
@@ -55,14 +39,7 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         )
       },
-      {
-        path: 'admin',
-        element: (
-          <ProtectedRoute adminOnly>
-            <Admin />
-          </ProtectedRoute>
-        )
-      }
+      { path: 'admin', element: <TournamentClosed /> }
     ]
   }
 ]);
